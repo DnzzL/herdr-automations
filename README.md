@@ -63,8 +63,7 @@ else builds from source and needs Go.
 2. **Edit the YAML** — `herdr plugin config-dir dnzzl.automations` → `automations.yaml`
    (or press `e` on the board to open it at the right line). Full reference in
    [`automations.example.yaml`](automations.example.yaml)
-3. **Ask your agent** — *"schedule a dependency bump on myapp every night"*. The bundled
-   [skill](skills/creating-automations/SKILL.md) teaches Claude Code the format and it writes the entry
+3. **Ask your agent** — see below
 
 The daemon picks up edits within 30 seconds, no restart.
 
@@ -73,6 +72,26 @@ herdr-automations list             # schedule + last run per automation
 herdr-automations run issue-triage # trigger now, don't wait for cron
 herdr-automations history         # what ran, when, how it ended
 ```
+
+### Let your agent do the scheduling
+
+The plugin ships a skill that teaches coding agents this file format. Agents only
+discover skills under `~/.claude/skills`, so install it once:
+
+```bash
+herdr-automations install-skill      # symlinks into ~/.claude/skills
+```
+
+Then, in any new agent session, plain language is enough:
+
+> *"Every Monday at 9am, review the open PRs and tickets on myapp and propose a sprint."*
+
+> *"Schedule a nightly dependency bump on myapp — run the tests and open a PR if they pass."*
+
+> *"Stop the flaky-hunt automation for now."*
+
+The agent writes the YAML entry, and the daemon picks it up within 30 seconds. It's
+a symlink, so plugin upgrades update the skill too.
 
 ### The board, inside Herdr
 

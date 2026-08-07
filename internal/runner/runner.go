@@ -6,6 +6,7 @@ package runner
 import (
 	"fmt"
 	"log"
+	"strings"
 	"sync"
 	"time"
 
@@ -49,7 +50,7 @@ func provision(a config.Automation) (workspaceID, paneID string, err error) {
 	label := "auto: " + a.Name
 	switch a.Workspace {
 	case config.WorkspaceWorktree:
-		branch := fmt.Sprintf("auto/%s-%s", a.Name, time.Now().Format("20060102-1504"))
+		branch := fmt.Sprintf("auto/%s-%s", slug(a.Name), time.Now().Format("20060102-1504"))
 		workspaceID, paneID, err = herdr.WorktreeCreate(a.Repo, branch, label)
 	case config.WorkspaceRoot:
 		workspaceID, paneID, err = herdr.WorkspaceCreate(a.Repo, label)
@@ -76,6 +77,28 @@ func execute(a config.Automation, paneID string) error {
 		return fmt.Errorf("prompt: %w", err)
 	}
 	return nil
+}
+
+// slug makes a name safe for a git branch: spaces and the characters
+// git check-ref-format rejects would otherwise fail worktree creation.
+func slug(name string) string {
+	var b strings.Builder
+	lastDash := true // also trims leading dashes
+	for _, r := range strings.ToLower(name) {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9', r == '_':
+			b.WriteRune(r)
+			lastDash = false
+		case !lastDash:
+			b.WriteByte('-')
+			lastDash = true
+		}
+	}
+	out := strings.Trim(b.String(), "-")
+	if out == "" {
+		return "automation"
+	}
+	return out
 }
 
 func runID(name string) string {
