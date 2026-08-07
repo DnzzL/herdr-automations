@@ -57,6 +57,9 @@ else builds from source and needs Go.
 **Three ways to add an automation**, all writing the same file:
 
 1. `herdr-automations add` — the wizard: validates the cron and previews the next three runs
+
+   ![The add wizard: naming an automation, validating its cron, previewing the next runs](docs/wizard.gif)
+
 2. **Edit the YAML** — `herdr plugin config-dir dnzzl.automations` → `automations.yaml`
    (or press `e` on the board to open it at the right line). Full reference in
    [`automations.example.yaml`](automations.example.yaml)
