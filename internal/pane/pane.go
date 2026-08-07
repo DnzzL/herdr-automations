@@ -152,13 +152,27 @@ func (m model) View() string {
 		return s + dimStyle.Render("No automations yet — run `herdr-automations add` or edit "+config.Path()) + "\n"
 	}
 	for i, r := range m.rows {
-		line := fmt.Sprintf(" %-24s %-16s %-10s %s",
-			truncate(r.auto.Name, 24), r.auto.Cron, statusLabel(r), nextRun(r.auto))
+		// Pad the plain text first: styling before padding would make the
+		// escape codes count toward the column widths.
+		name := fmt.Sprintf("%-24s", truncate(r.auto.Name, 24))
+		cron := fmt.Sprintf("%-16s", truncate(r.auto.Cron, 16))
+		status := fmt.Sprintf("%-8s", statusText(r))
+		next := nextRun(r.auto)
 		if r.auto.Disabled {
-			line = dimStyle.Render(line + "  (disabled)")
+			next = "(disabled)"
 		}
-		if i == m.cursor {
-			line = selectedStyle.Render(line)
+
+		var line string
+		switch {
+		case i == m.cursor:
+			// One reverse-video span over the whole row: any nested color
+			// would end the highlight mid-line.
+			line = selectedStyle.Render(" " + name + " " + cron + " " + status + " " + next + " ")
+		case r.auto.Disabled:
+			line = dimStyle.Render(" " + name + " " + cron + " " + status + " " + next)
+		default:
+			line = " " + name + " " + cron + " " +
+				statusStyle(r).Render(status) + " " + dimStyle.Render(next)
 		}
 		s += line + "\n"
 	}
@@ -168,29 +182,33 @@ func (m model) View() string {
 	return s
 }
 
-func statusLabel(r row) string {
+func statusText(r row) string {
 	if r.last == nil {
-		return dimStyle.Render("never")
+		return "never"
 	}
-	label := string(r.last.Status)
+	return string(r.last.Status)
+}
+
+func statusStyle(r row) lipgloss.Style {
+	if r.last == nil {
+		return dimStyle
+	}
 	switch r.last.Status {
 	case history.StatusFailed:
-		label = failStyle.Render(label)
+		return failStyle
 	case history.StatusDone:
-		label = okStyle.Render(label)
+		return okStyle
+	default:
+		return lipgloss.NewStyle()
 	}
-	return label
 }
 
 func nextRun(a config.Automation) string {
-	if a.Disabled {
-		return ""
-	}
 	sched, err := config.CronParser.Parse(a.Cron)
 	if err != nil {
 		return ""
 	}
-	return dimStyle.Render("next " + sched.Next(time.Now()).Format("Mon 15:04"))
+	return "next " + sched.Next(time.Now()).Format("Mon 15:04")
 }
 
 func truncate(s string, n int) string {

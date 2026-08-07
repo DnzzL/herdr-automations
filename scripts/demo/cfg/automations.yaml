@@ -1,0 +1,18 @@
+automations:
+  - name: issue-triage
+    cron: "0 9 * * 1-5"
+    repo: ~/Projects/myapp
+    prompt: |
+      Triage new GitHub issues: label them, close duplicates,
+      draft replies for the ones needing more info.
+    mcp_config: ~/.config/mcp/github.json
+
+  - name: nightly-deps
+    cron: "@daily"
+    repo: ~/Projects/myapp
+    prompt: Bump dependencies, run the test suite, open a PR if green.
+
+  - name: flaky-hunt
+    cron: "0 2 * * 6"
+    repo: ~/Projects/myapp
+    prompt: Run the test suite 20 times, quarantine any flaky test you find.

@@ -16,6 +16,8 @@ automations:
       draft replies for the ones needing more info.
 ```
 
+![The Automations board: schedules, last run status, and jumping into the config](docs/board.gif)
+
 That's the whole feature. Every weekday at 9:00, a Claude (or Codex, or opencode…) agent spawns in a fresh git worktree of `myapp`, gets that prompt, and works until it's done. You arrive to triaged issues and a run log.
 
 ## Why
