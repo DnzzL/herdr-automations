@@ -38,7 +38,7 @@ That's the whole feature. Every weekday at 9:00, a Claude (or Codex, or opencode
 - **MCP attach** — `mcp_config: path.json` hands the agent its MCP servers (GitHub, Slack, your DB…)
 - **Overlap guard** — a tick that fires while the previous run is still working is *skipped*, never queued into a pile-up
 - **Full run history** — append-only JSONL: `scheduled → running → done | failed | skipped`, with workspace and pane IDs to jump back into
-- **Live board** — an overlay pane inside Herdr: next run, last status, `r` to run now
+- **Live board** — an overlay pane inside Herdr: next run, last status, `r` to run now, `enter` to jump straight into the workspace a run created
 - **Agents can self-schedule** — a bundled [skill](skills/creating-automations/SKILL.md) teaches Claude Code the format: say *"bump my deps every night"* and the agent writes the entry itself
 - **One static Go binary** — no Node, no Python, no runtime on the machine
 
@@ -57,7 +57,31 @@ herdr-automations run issue-triage # trigger now, don't wait for cron
 herdr-automations history         # what ran, when, how it ended
 ```
 
-Inside Herdr: open the **Automations** pane (overlay) or hit the *"Automations: run now"* action.
+### The board, inside Herdr
+
+A live overlay listing every automation with its next run and last status:
+
+```bash
+herdr plugin pane open --plugin dnzzl.automations --entrypoint board --placement overlay
+```
+
+| Key | Does |
+|---|---|
+| `enter` | **Jump to the last run** — focuses the workspace that automation spawned, so you land right in the agent's terminal |
+| `r` | Run the selected automation now |
+| `j` / `k` | Move · `q` closes |
+
+Bind it to a chord so you never type that command again — in `~/.config/herdr/config.toml`:
+
+```toml
+[[keys.command]]
+key = "prefix+a"
+type = "shell"
+command = "herdr plugin pane open --plugin dnzzl.automations --entrypoint board --placement overlay"
+```
+
+The plugin also registers an action (`herdr plugin action invoke run-now --plugin dnzzl.automations`)
+that prompts for which automation to fire.
 
 ## How a run works
 

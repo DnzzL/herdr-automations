@@ -3,6 +3,7 @@
 package pane
 
 import (
+	"errors"
 	"fmt"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/DnzzL/herdr-automations/internal/config"
+	"github.com/DnzzL/herdr-automations/internal/herdr"
 	"github.com/DnzzL/herdr-automations/internal/history"
 	"github.com/DnzzL/herdr-automations/internal/runner"
 )
@@ -96,13 +98,34 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.notice = "running " + a.Name + "…"
 				return m, func() tea.Msg { return ranMsg{err: runner.Run(a, "manual")} }
 			}
+		case "enter":
+			// Jump to the workspace the last run happened in, and close the
+			// board so the agent lands in front of you.
+			if m.cursor < len(m.rows) {
+				last := m.rows[m.cursor].last
+				if last == nil || last.WorkspaceID == "" {
+					m.notice = dimStyle.Render("no run to jump to yet")
+					return m, nil
+				}
+				if err := herdr.Focus(last.WorkspaceID, last.PaneID); err != nil {
+					if errors.Is(err, herdr.ErrGone) {
+						m.notice = dimStyle.Render(
+							"workspace " + last.WorkspaceID + " was closed — nothing to jump to")
+					} else {
+						m.notice = failStyle.Render(err.Error())
+					}
+					return m, nil
+				}
+				return m, tea.Quit
+			}
 		}
 	}
 	return m, nil
 }
 
 func (m model) View() string {
-	s := titleStyle.Render("Automations") + dimStyle.Render("  r: run now · j/k: move · q: quit") + "\n\n"
+	s := titleStyle.Render("Automations") +
+		dimStyle.Render("  r: run now · enter: jump to last run · j/k: move · q: quit") + "\n\n"
 	if m.err != nil {
 		return s + failStyle.Render("config error: "+m.err.Error()) + "\n"
 	}

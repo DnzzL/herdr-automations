@@ -9,16 +9,16 @@ platforms = ["linux", "macos"]
 command = ["go", "build", "-o", "bin/herdr-automations", "."]
 
 [[startup]]
-command = ["bin/herdr-automations", "daemon"]
+command = ["./bin/herdr-automations", "daemon"]
 
 [[actions]]
 id = "run-now"
 title = "Automations: run now"
 contexts = ["workspace"]
-command = ["bin/herdr-automations", "run", "--pick"]
+command = ["./bin/herdr-automations", "run", "--pick"]
 
 [[panes]]
 id = "board"
 title = "Automations"
 placement = "overlay"
-command = ["bin/herdr-automations", "pane"]
+command = ["./bin/herdr-automations", "pane"]

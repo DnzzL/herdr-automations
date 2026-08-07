@@ -6,9 +6,11 @@ package herdr
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"time"
 )
 
@@ -104,6 +106,28 @@ func AgentStart(name, kind, paneID string, extraArgs []string) error {
 func AgentPrompt(target, text string, timeout time.Duration) error {
 	return run(nil, "agent", "prompt", target, text,
 		"--wait", "--timeout", fmt.Sprintf("%d", timeout.Milliseconds()))
+}
+
+// ErrGone means the run's workspace no longer exists — the expected outcome
+// once you've reviewed and closed it, not a failure worth a stack trace.
+var ErrGone = errors.New("workspace already closed")
+
+// Focus brings a run's workspace to the front, then its agent pane when one
+// is known — the "jump to what this automation did" move.
+func Focus(workspaceID, paneID string) error {
+	if workspaceID != "" {
+		if err := run(nil, "workspace", "focus", workspaceID); err != nil {
+			if strings.Contains(err.Error(), "workspace_not_found") {
+				return ErrGone
+			}
+			return err
+		}
+	}
+	if paneID != "" {
+		// Best-effort: the pane may be gone while the workspace lives on.
+		_ = run(nil, "agent", "focus", paneID)
+	}
+	return nil
 }
 
 // PaneRun executes a shell command in a pane (used to delegate to hwf).
