@@ -5,6 +5,7 @@ package pane
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -30,10 +31,12 @@ type row struct {
 }
 
 type model struct {
-	rows   []row
-	cursor int
-	err    error
-	notice string
+	rows        []row
+	cursor      int
+	width       int
+	err         error
+	notice      string
+	noticeStyle lipgloss.Style
 }
 
 type refreshMsg struct{}
@@ -67,27 +70,31 @@ func tick() tea.Cmd {
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		return m, nil
 	case refreshMsg:
 		next := load()
 		if next.cursor = m.cursor; next.cursor >= len(next.rows) {
 			next.cursor = max(0, len(next.rows)-1)
 		}
-		next.notice = m.notice
+		next.notice, next.noticeStyle = m.notice, m.noticeStyle
+		next.width = m.width
 		return next, tick()
 	case editedMsg:
 		next := load() // pick up whatever was just saved, including new entries
 		next.cursor = min(m.cursor, max(0, len(next.rows)-1))
 		if msg.err != nil {
-			next.notice = failStyle.Render(msg.err.Error())
+			next.setNotice(failStyle, msg.err.Error())
 		} else if next.err == nil {
-			next.notice = okStyle.Render("config reloaded")
+			next.setNotice(okStyle, "config reloaded")
 		}
 		return next, tick()
 	case ranMsg:
 		if msg.err != nil {
-			m.notice = failStyle.Render(msg.err.Error())
+			m.setNotice(failStyle, msg.err.Error())
 		} else {
-			m.notice = okStyle.Render("run finished")
+			m.setNotice(okStyle, "run finished")
 		}
 		return m, nil
 	case tea.KeyMsg:
@@ -105,7 +112,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "r":
 			if m.cursor < len(m.rows) {
 				a := m.rows[m.cursor].auto
-				m.notice = "running " + a.Name + "…"
+				m.setNotice(dimStyle, "running "+a.Name+"…")
 				return m, func() tea.Msg { return ranMsg{err: runner.Run(a, "manual")} }
 			}
 		case "e":
@@ -123,15 +130,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.cursor < len(m.rows) {
 				last := m.rows[m.cursor].last
 				if last == nil || last.WorkspaceID == "" {
-					m.notice = dimStyle.Render("no run to jump to yet")
+					m.setNotice(dimStyle, "no run to jump to yet")
 					return m, nil
 				}
 				if err := herdr.Focus(last.WorkspaceID, last.PaneID); err != nil {
 					if errors.Is(err, herdr.ErrGone) {
-						m.notice = dimStyle.Render(
-							"workspace " + last.WorkspaceID + " was closed — nothing to jump to")
+						m.setNotice(dimStyle,
+							"workspace "+last.WorkspaceID+" was closed — nothing to jump to")
 					} else {
-						m.notice = failStyle.Render(err.Error())
+						m.setNotice(failStyle, err.Error())
 					}
 					return m, nil
 				}
@@ -140,6 +147,21 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 	return m, nil
+}
+
+// setNotice stores the message as plain text; View decides how much of it
+// fits. A herdr API error is long enough to blow up the pane otherwise.
+func (m *model) setNotice(style lipgloss.Style, text string) {
+	m.notice = strings.Join(strings.Fields(text), " ")
+	m.noticeStyle = style
+}
+
+func (m model) noticeLine() string {
+	width := m.width
+	if width <= 0 {
+		width = 80
+	}
+	return truncate(m.notice, width-2)
 }
 
 func (m model) View() string {
@@ -177,7 +199,7 @@ func (m model) View() string {
 		s += line + "\n"
 	}
 	if m.notice != "" {
-		s += "\n" + m.notice + "\n"
+		s += "\n" + m.noticeStyle.Render(m.noticeLine()) + "\n"
 	}
 	return s
 }
@@ -212,8 +234,9 @@ func nextRun(a config.Automation) string {
 }
 
 func truncate(s string, n int) string {
-	if len(s) <= n {
+	r := []rune(s)
+	if n <= 0 || len(r) <= n {
 		return s
 	}
-	return s[:n-1] + "…"
+	return string(r[:n-1]) + "…"
 }

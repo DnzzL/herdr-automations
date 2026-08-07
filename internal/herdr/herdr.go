@@ -29,7 +29,7 @@ func run(out any, args ...string) error {
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("herdr %v: %w: %s", args, err, stderr.String())
+		return fmt.Errorf("%s: %s", args[0]+" "+args[1], apiError(stdout.Bytes(), stderr.String()))
 	}
 	if out == nil {
 		return nil
@@ -48,6 +48,27 @@ func run(out any, args ...string) error {
 		return fmt.Errorf("herdr %v: decode result: %w", args, err)
 	}
 	return nil
+}
+
+// apiError turns herdr's JSON error envelope into one readable line. Without
+// this the raw payload ends up in logs and, worse, in the board's status line.
+func apiError(stdout []byte, stderr string) string {
+	var envelope struct {
+		Error struct {
+			Code    string `json:"code"`
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if json.Unmarshal(stdout, &envelope) == nil && envelope.Error.Code != "" {
+		if envelope.Error.Message != "" {
+			return envelope.Error.Code + ": " + envelope.Error.Message
+		}
+		return envelope.Error.Code
+	}
+	if s := strings.TrimSpace(stderr); s != "" {
+		return s
+	}
+	return strings.TrimSpace(string(stdout))
 }
 
 // createResult matches both worktree_created and workspace_created payloads:

@@ -70,7 +70,8 @@ func execute(a config.Automation, paneID string) error {
 	if a.MCPConfig != "" {
 		args = append([]string{"--mcp-config", a.MCPConfig}, args...)
 	}
-	if err := herdr.AgentStart(a.Name, a.Agent, paneID, args); err != nil {
+	// Herdr requires agent names to be lowercase, 1-32 chars, [a-z0-9-_].
+	if err := herdr.AgentStart(agentName(a.Name), a.Agent, paneID, args); err != nil {
 		return fmt.Errorf("start %s agent: %w", a.Agent, err)
 	}
 	if err := herdr.AgentPrompt(paneID, a.Prompt, timeout); err != nil {
@@ -99,6 +100,16 @@ func slug(name string) string {
 		return "automation"
 	}
 	return out
+}
+
+// agentName fits an automation name into Herdr's agent-name rules: lowercase,
+// [a-z0-9-_], at most 32 characters.
+func agentName(name string) string {
+	s := slug(name)
+	if len(s) > 32 {
+		s = strings.Trim(s[:32], "-")
+	}
+	return s
 }
 
 func runID(name string) string {
