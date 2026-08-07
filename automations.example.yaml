@@ -1,0 +1,19 @@
+# Copy to your plugin config dir (herdr plugin config-dir dnzzl.automations)
+# as automations.yaml — or let `herdr-automations add` write it for you.
+automations:
+  - name: issue-triage
+    cron: "0 9 * * 1-5"
+    repo: ~/Projects/myapp
+    workspace: worktree
+    agent: claude
+    prompt: |
+      Triage new GitHub issues: label them, close duplicates,
+      draft replies for the ones needing more info.
+    mcp_config: ~/.config/mcp/github.json
+    timeout_minutes: 45
+
+  - name: nightly-deps
+    cron: "@daily"
+    repo: ~/Projects/myapp
+    workflow: bump-dependencies   # delegated to herdr-workflows: hwf run bump-dependencies
+    disabled: true
