@@ -50,14 +50,10 @@ func provision(a config.Automation) (workspaceID, paneID string, err error) {
 	switch a.Workspace {
 	case config.WorkspaceWorktree:
 		branch := fmt.Sprintf("auto/%s-%s", a.Name, time.Now().Format("20060102-1504"))
-		workspaceID, err = herdr.WorktreeCreate(a.Repo, branch, label)
+		workspaceID, paneID, err = herdr.WorktreeCreate(a.Repo, branch, label)
 	case config.WorkspaceRoot:
-		workspaceID, err = herdr.WorkspaceCreate(a.Repo, label)
+		workspaceID, paneID, err = herdr.WorkspaceCreate(a.Repo, label)
 	}
-	if err != nil {
-		return "", "", err
-	}
-	paneID, err = herdr.FirstPane(workspaceID)
 	return workspaceID, paneID, err
 }
 

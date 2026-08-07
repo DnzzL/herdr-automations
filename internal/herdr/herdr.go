@@ -48,67 +48,44 @@ func run(out any, args ...string) error {
 	return nil
 }
 
-type Pane struct {
-	PaneID      string `json:"pane_id"`
-	WorkspaceID string `json:"workspace_id"`
-	Agent       string `json:"agent"`
-	AgentStatus string `json:"agent_status"`
-	CWD         string `json:"cwd"`
+// createResult matches both worktree_created and workspace_created payloads:
+// the new workspace plus its initial pane, ready for `agent start`.
+type createResult struct {
+	Workspace struct {
+		WorkspaceID string `json:"workspace_id"`
+	} `json:"workspace"`
+	RootPane struct {
+		PaneID string `json:"pane_id"`
+	} `json:"root_pane"`
+}
+
+func (r createResult) ids(what string) (string, string, error) {
+	if r.Workspace.WorkspaceID == "" || r.RootPane.PaneID == "" {
+		return "", "", fmt.Errorf("%s returned no workspace/pane id", what)
+	}
+	return r.Workspace.WorkspaceID, r.RootPane.PaneID, nil
 }
 
 // WorktreeCreate provisions a fresh git worktree workspace off repo and
-// returns its workspace ID.
-func WorktreeCreate(repo, branch, label string) (string, error) {
-	var res struct {
-		WorkspaceID string `json:"workspace_id"`
-	}
-	err := run(&res, "worktree", "create",
+// returns its workspace and root pane IDs.
+func WorktreeCreate(repo, branch, label string) (workspaceID, paneID string, err error) {
+	var res createResult
+	err = run(&res, "worktree", "create",
 		"--cwd", repo, "--branch", branch, "--label", label, "--no-focus")
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
-	if res.WorkspaceID == "" {
-		return "", fmt.Errorf("worktree create returned no workspace_id")
-	}
-	return res.WorkspaceID, nil
+	return res.ids("worktree create")
 }
 
 // WorkspaceCreate opens a workspace directly on a directory (root mode).
-func WorkspaceCreate(cwd, label string) (string, error) {
-	var res struct {
-		WorkspaceID string `json:"workspace_id"`
-	}
-	err := run(&res, "workspace", "create", "--cwd", cwd, "--label", label, "--no-focus")
+func WorkspaceCreate(cwd, label string) (workspaceID, paneID string, err error) {
+	var res createResult
+	err = run(&res, "workspace", "create", "--cwd", cwd, "--label", label, "--no-focus")
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
-	if res.WorkspaceID == "" {
-		return "", fmt.Errorf("workspace create returned no workspace_id")
-	}
-	return res.WorkspaceID, nil
-}
-
-// FirstPane polls for the workspace's initial pane; workspace creation is
-// asynchronous enough that the pane can lag by a beat.
-func FirstPane(workspaceID string) (string, error) {
-	deadline := time.Now().Add(15 * time.Second)
-	for {
-		var res struct {
-			Panes []Pane `json:"panes"`
-		}
-		if err := run(&res, "pane", "list"); err != nil {
-			return "", err
-		}
-		for _, p := range res.Panes {
-			if p.WorkspaceID == workspaceID {
-				return p.PaneID, nil
-			}
-		}
-		if time.Now().After(deadline) {
-			return "", fmt.Errorf("no pane appeared in workspace %s", workspaceID)
-		}
-		time.Sleep(500 * time.Millisecond)
-	}
+	return res.ids("workspace create")
 }
 
 // AgentStart launches an interactive agent in a pane sitting at a shell
