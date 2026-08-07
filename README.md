@@ -45,11 +45,23 @@ That's the whole feature. Every weekday at 9:00, a Claude (or Codex, or opencode
 ## Quick start
 
 ```bash
-herdr plugin install DnzzL/herdr-automations   # builds itself (needs Go)
+herdr plugin install DnzzL/herdr-automations   # prebuilt binary, no toolchain needed
 herdr-automations add                          # wizard: validates cron, previews next 3 runs
 ```
 
-Or write the YAML yourself — `herdr plugin config-dir dnzzl.automations` → `automations.yaml`, full reference in [`automations.example.yaml`](automations.example.yaml). The daemon picks up edits within 30 seconds, no restart.
+Prebuilt for macOS and Linux (arm64/amd64), checksum-verified at install; anything
+else builds from source and needs Go.
+
+**Three ways to add an automation**, all writing the same file:
+
+1. `herdr-automations add` — the wizard: validates the cron and previews the next three runs
+2. **Edit the YAML** — `herdr plugin config-dir dnzzl.automations` → `automations.yaml`
+   (or press `e` on the board to open it at the right line). Full reference in
+   [`automations.example.yaml`](automations.example.yaml)
+3. **Ask your agent** — *"schedule a dependency bump on myapp every night"*. The bundled
+   [skill](skills/creating-automations/SKILL.md) teaches Claude Code the format and it writes the entry
+
+The daemon picks up edits within 30 seconds, no restart.
 
 ```bash
 herdr-automations list             # schedule + last run per automation
@@ -69,6 +81,7 @@ herdr plugin pane open --plugin dnzzl.automations --entrypoint board --placement
 |---|---|
 | `enter` | **Jump to the last run** — focuses the workspace that automation spawned, so you land right in the agent's terminal |
 | `r` | Run the selected automation now |
+| `e` | Open `automations.yaml` in `$EDITOR`, **cursor on that automation's line** |
 | `j` / `k` | Move · `q` closes |
 
 Bind it to a chord so you never type that command again — in `~/.config/herdr/config.toml`:
