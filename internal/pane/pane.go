@@ -38,6 +38,7 @@ type model struct {
 
 type refreshMsg struct{}
 type ranMsg struct{ err error }
+type editedMsg struct{ err error }
 
 func Run() error {
 	_, err := tea.NewProgram(load(), tea.WithAltScreen()).Run()
@@ -73,6 +74,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		next.notice = m.notice
 		return next, tick()
+	case editedMsg:
+		next := load() // pick up whatever was just saved, including new entries
+		next.cursor = min(m.cursor, max(0, len(next.rows)-1))
+		if msg.err != nil {
+			next.notice = failStyle.Render(msg.err.Error())
+		} else if next.err == nil {
+			next.notice = okStyle.Render("config reloaded")
+		}
+		return next, tick()
 	case ranMsg:
 		if msg.err != nil {
 			m.notice = failStyle.Render(msg.err.Error())
@@ -98,6 +108,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.notice = "running " + a.Name + "…"
 				return m, func() tea.Msg { return ranMsg{err: runner.Run(a, "manual")} }
 			}
+		case "e":
+			// Open the YAML in $EDITOR at the selected automation's line,
+			// taking over the pane until the editor exits.
+			line := 0
+			if m.cursor < len(m.rows) {
+				line = config.LineOf(m.rows[m.cursor].auto.Name)
+			}
+			cmd := editorCommand(config.Path(), line)
+			return m, tea.ExecProcess(cmd, func(err error) tea.Msg { return editedMsg{err} })
 		case "enter":
 			// Jump to the workspace the last run happened in, and close the
 			// board so the agent lands in front of you.
@@ -125,7 +144,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m model) View() string {
 	s := titleStyle.Render("Automations") +
-		dimStyle.Render("  r: run now · enter: jump to last run · j/k: move · q: quit") + "\n\n"
+		dimStyle.Render("  r: run · enter: jump to last run · e: edit config · j/k: move · q: quit") + "\n\n"
 	if m.err != nil {
 		return s + failStyle.Render("config error: "+m.err.Error()) + "\n"
 	}

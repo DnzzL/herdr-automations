@@ -15,6 +15,9 @@ import (
 	"github.com/DnzzL/herdr-automations/internal/wizard"
 )
 
+// Version is stamped by the release build; "dev" for local builds.
+var Version = "dev"
+
 const usage = `herdr-automations — cron for your Herdr agents
 
 Usage:
@@ -24,6 +27,7 @@ Usage:
   herdr-automations run <name>       Trigger an automation now
   herdr-automations history [name]   Show recent runs
   herdr-automations pane             Interactive board (used by the Herdr pane)
+  herdr-automations version          Print the version
 
 Config:  %s
 History: %s
@@ -52,6 +56,8 @@ func main() {
 		err = showHistory(name)
 	case "pane":
 		err = pane.Run()
+	case "version", "--version", "-v":
+		fmt.Println(Version)
 	default:
 		fmt.Printf(usage, config.Path(), config.StateDir())
 		os.Exit(2)

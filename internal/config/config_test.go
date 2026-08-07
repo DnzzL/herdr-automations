@@ -50,6 +50,28 @@ automations:
 	}
 }
 
+func TestLineOfFindsTheEntry(t *testing.T) {
+	withConfig(t, `automations:
+  - name: first
+    cron: "@daily"
+    repo: /x
+    prompt: p
+  - name: second
+    cron: "@daily"
+    repo: /x
+    prompt: p
+`)
+	if got := LineOf("second"); got != 6 {
+		t.Fatalf("LineOf(second) = %d, want 6", got)
+	}
+	if got := LineOf("first"); got != 2 {
+		t.Fatalf("LineOf(first) = %d, want 2", got)
+	}
+	if got := LineOf("missing"); got != 0 {
+		t.Fatalf("LineOf(missing) = %d, want 0", got)
+	}
+}
+
 func TestLoadRejectsBadEntries(t *testing.T) {
 	cases := map[string]string{
 		"bad cron": `

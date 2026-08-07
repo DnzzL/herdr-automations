@@ -173,6 +173,28 @@ func Save(cfg *Config) error {
 	return os.WriteFile(Path(), out, 0o644)
 }
 
+// LineOf returns the 1-based line where an automation is declared, so an
+// editor can open the file right at it. 0 means "not found — open the top".
+func LineOf(name string) int {
+	raw, err := os.ReadFile(Path())
+	if err != nil {
+		return 0
+	}
+	for i, line := range strings.Split(string(raw), "\n") {
+		trimmed := strings.TrimSpace(line)
+		if !strings.HasPrefix(trimmed, "- ") && !strings.HasPrefix(trimmed, "name:") {
+			continue
+		}
+		// Matches both "- name: x" and a "name: x" line under a "-" bullet.
+		if _, value, found := strings.Cut(trimmed, "name:"); found {
+			if strings.TrimSpace(strings.Trim(strings.TrimSpace(value), `"'`)) == name {
+				return i + 1
+			}
+		}
+	}
+	return 0
+}
+
 // Find returns the automation named name, or nil.
 func (c *Config) Find(name string) *Automation {
 	for i := range c.Automations {
