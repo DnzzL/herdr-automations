@@ -21,6 +21,10 @@ const (
 	StatusDone      Status = "done"
 	StatusFailed    Status = "failed"
 	StatusSkipped   Status = "skipped"
+	// StatusMissed records an occurrence the scheduler could not run at all —
+	// typically the machine was asleep past the catch-up window. Recording it
+	// is the point: a silently absent run is worse than a visible failure.
+	StatusMissed Status = "missed"
 )
 
 type Record struct {

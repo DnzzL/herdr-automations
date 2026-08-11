@@ -35,6 +35,7 @@ automations:
     mcp_config: ~/.config/mcp/github.json   # optional → passed as --mcp-config
     agent_args: ["--model", "opus"]         # optional, verbatim agent flags
     timeout_minutes: 60           # optional, default 60
+    catch_up_minutes: 120         # optional: how late a sleep-delayed run may start; -1 never
     # disabled: true              # keep the entry, stop scheduling it
 ```
 
@@ -55,6 +56,8 @@ Exactly one of `prompt` / `workflow` is required.
   it after writing.
 - Times are local to the machine running the Herdr server.
 - The daemon reloads within 30 seconds; no restart needed.
+- Occurrences missed while the machine slept run on wake within `catch_up_minutes`
+  (default 120), otherwise they appear as `missed` in the history.
 - `workspace: worktree` means the agent never touches the user's working copy.
   Only choose `root` when the task must see uncommitted local state.
 

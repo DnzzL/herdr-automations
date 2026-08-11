@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/robfig/cron/v3"
 	"gopkg.in/yaml.v3"
@@ -49,6 +50,9 @@ type Automation struct {
 	AgentArgs []string `yaml:"agent_args,omitempty"`
 	// TimeoutMinutes bounds the agent prompt --wait; defaults to 60.
 	TimeoutMinutes int `yaml:"timeout_minutes,omitempty"`
+	// CatchUpMinutes is how late a missed occurrence may still run — the
+	// laptop-was-asleep case. 0 uses the default (120); -1 never catches up.
+	CatchUpMinutes int `yaml:"catch_up_minutes,omitempty"`
 	// Disabled keeps the entry in the file but out of the scheduler.
 	Disabled bool `yaml:"disabled,omitempty"`
 }
@@ -67,6 +71,17 @@ func (a *Automation) applyDefaults() {
 	if a.TimeoutMinutes <= 0 {
 		a.TimeoutMinutes = 60
 	}
+	if a.CatchUpMinutes == 0 {
+		a.CatchUpMinutes = 120
+	}
+}
+
+// CatchUp is how late this automation may still start; negative means never.
+func (a Automation) CatchUp() time.Duration {
+	if a.CatchUpMinutes < 0 {
+		return 0
+	}
+	return time.Duration(a.CatchUpMinutes) * time.Minute
 }
 
 func (a *Automation) validate() error {

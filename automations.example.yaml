@@ -11,6 +11,8 @@ automations:
       draft replies for the ones needing more info.
     mcp_config: ~/.config/mcp/github.json
     timeout_minutes: 45
+    # If the machine was asleep at 09:00, run on wake — but only within 2h.
+    catch_up_minutes: 120
 
   - name: nightly-deps
     cron: "@daily"

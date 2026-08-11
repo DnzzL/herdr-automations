@@ -19,7 +19,15 @@ import (
 // 9:00 run is still working at 10:00, the 10:00 tick is skipped, not queued.
 var inFlight sync.Map
 
-// Run executes the automation synchronously. trigger is "cron" or "manual".
+// Busy reports whether any automation is mid-run.
+func Busy() bool {
+	busy := false
+	inFlight.Range(func(_, _ any) bool { busy = true; return false })
+	return busy
+}
+
+// Run executes the automation synchronously. trigger is "cron", "catchup" or
+// "manual".
 func Run(a config.Automation, trigger string) error {
 	if _, busy := inFlight.LoadOrStore(a.Name, true); busy {
 		record(runID(a.Name), a.Name, trigger, history.StatusSkipped, "", "",

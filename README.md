@@ -39,7 +39,9 @@ That's the whole feature. Every weekday at 9:00, a Claude (or Codex, or opencode
 - **Agent-agnostic** — anything `herdr agent start` supports: `claude`, `codex`, `opencode`, `gemini`, `cursor`, …
 - **MCP attach** — `mcp_config: path.json` hands the agent its MCP servers (GitHub, Slack, your DB…)
 - **Overlap guard** — a tick that fires while the previous run is still working is *skipped*, never queued into a pile-up
-- **Full run history** — append-only JSONL: `scheduled → running → done | failed | skipped`, with workspace and pane IDs to jump back into
+- **Survives sleep** — occurrences are computed off the wall clock, so a run due while the laptop slept fires on wake (within `catch_up_minutes`) instead of vanishing; anything too late is recorded as `missed`
+- **Full run history** — append-only JSONL: `scheduled → running → done | failed | skipped | missed`, with workspace and pane IDs to jump back into
+- **Self-updating daemon** — it re-executes itself when the plugin binary changes, and a PID lock keeps a second scheduler from double-firing everything
 - **Live board** — an overlay pane inside Herdr: next run, last status, `r` to run now, `enter` to jump straight into the workspace a run created
 - **Agents can self-schedule** — a bundled [skill](skills/creating-automations/SKILL.md) teaches Claude Code the format: say *"bump my deps every night"* and the agent writes the entry itself
 - **One static Go binary** — no Node, no Python, no runtime on the machine
@@ -147,12 +149,21 @@ automations:
     mcp_config: ~/.config/mcp/github.json   # optional → --mcp-config
     agent_args: ["--model", "opus"]         # optional, verbatim agent flags
     timeout_minutes: 60           # optional bound on the run
+    catch_up_minutes: 120         # how late a sleep-delayed run may still start; -1 never
     disabled: true                # optional: keep it, don't schedule it
 ```
 
 ## FAQ
 
-**Does my machine need to be awake?** The Herdr *server* does. Herdr's whole point is running headless — a home server, a VPS, a Mac that doesn't sleep.
+**Does my machine need to be awake?** For the run to start, yes — and laptops sleep.
+So the scheduler works off the wall clock, not a timer: an occurrence that came due
+while the machine was asleep **runs when it wakes**, as long as it's within
+`catch_up_minutes` (default 2 hours). Anything older is recorded as `missed` in the
+history rather than silently skipped, so `herdr-automations history` always tells you
+what didn't happen. Set `catch_up_minutes: -1` for automations that are pointless late.
+
+Timers alone don't survive sleep — macOS suspends the monotonic clock, so a job armed
+for 9am Monday can simply never fire. Hence the wall-clock loop.
 
 **What happens to the worktrees?** They accumulate as reviewable workspaces — each run is a branch you can inspect, merge, or `herdr worktree remove`. Auto-cleanup of merged runs is on the roadmap.
 
