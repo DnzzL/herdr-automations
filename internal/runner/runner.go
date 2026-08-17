@@ -82,10 +82,67 @@ func execute(a config.Automation, paneID string) error {
 	if err := herdr.AgentStart(agentName(a.Name), a.Agent, paneID, args); err != nil {
 		return fmt.Errorf("start %s agent: %w", a.Agent, err)
 	}
-	if err := herdr.AgentPrompt(paneID, a.Prompt, timeout); err != nil {
-		return fmt.Errorf("prompt: %w", err)
+	if err := submit(paneID, a.Prompt); err != nil {
+		return err
+	}
+	if err := herdr.AgentWait(paneID, timeout); err != nil {
+		return fmt.Errorf("waiting for the agent: %w", err)
 	}
 	return nil
+}
+
+// submit gets the prompt in front of the agent and confirms it started working.
+//
+// A freshly started agent is reported ready before it can actually accept
+// input — it may still be connecting MCP servers, especially right after the
+// machine wakes. herdr then reports agent_prompt_stalled even though the text
+// reached the composer, so each step here verifies the status rather than
+// trusting the previous call's verdict.
+func submit(paneID, prompt string) error {
+	err := herdr.AgentSubmit(paneID, prompt)
+	if err == nil {
+		return nil
+	}
+	if !herdr.HasCode(err, herdr.CodeStalled) {
+		return fmt.Errorf("prompt: %w", err)
+	}
+
+	// The text is probably in the composer, just not submitted. Give the agent
+	// a moment, then press Enter for it, then fall back to typing it again.
+	if working(paneID, 20*time.Second) {
+		return nil
+	}
+	log.Printf("prompt stalled on %s, submitting the pending composer", paneID)
+	if err := herdr.AgentSubmitPending(paneID); err != nil {
+		return fmt.Errorf("prompt: %w", err)
+	}
+	if working(paneID, 20*time.Second) {
+		return nil
+	}
+
+	log.Printf("still idle on %s, retyping the prompt", paneID)
+	if err := herdr.AgentSubmit(paneID, prompt); err != nil && !herdr.HasCode(err, herdr.CodeStalled) {
+		return fmt.Errorf("prompt: %w", err)
+	}
+	if working(paneID, 30*time.Second) {
+		return nil
+	}
+	return fmt.Errorf("prompt: the agent never started working; it may still be initialising")
+}
+
+// working polls until the agent leaves idle, or the window closes.
+func working(paneID string, within time.Duration) bool {
+	deadline := time.Now().Add(within)
+	for {
+		status, err := herdr.AgentStatus(paneID)
+		if err == nil && status != "idle" && status != "unknown" {
+			return true
+		}
+		if time.Now().After(deadline) {
+			return false
+		}
+		time.Sleep(2 * time.Second)
+	}
 }
 
 // slug makes a name safe for a git branch: spaces and the characters

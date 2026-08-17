@@ -29,7 +29,7 @@ func run(out any, args ...string) error {
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("%s: %s", args[0]+" "+args[1], apiError(stdout.Bytes(), stderr.String()))
+		return newAPIError(args, stdout.Bytes(), stderr.String())
 	}
 	if out == nil {
 		return nil
@@ -50,9 +50,33 @@ func run(out any, args ...string) error {
 	return nil
 }
 
-// apiError turns herdr's JSON error envelope into one readable line. Without
-// this the raw payload ends up in logs and, worse, in the board's status line.
-func apiError(stdout []byte, stderr string) string {
+// APIError carries herdr's error code so callers can recover from the ones
+// that are recoverable, and so logs get one readable line instead of a JSON
+// payload.
+type APIError struct {
+	Command string
+	Code    string
+	Message string
+}
+
+func (e *APIError) Error() string {
+	if e.Code != "" && e.Message != "" {
+		return e.Command + ": " + e.Code + ": " + e.Message
+	}
+	if e.Code != "" {
+		return e.Command + ": " + e.Code
+	}
+	return e.Command + ": " + e.Message
+}
+
+// HasCode reports whether err is a herdr API error with the given code.
+func HasCode(err error, code string) bool {
+	var apiErr *APIError
+	return errors.As(err, &apiErr) && apiErr.Code == code
+}
+
+func newAPIError(args []string, stdout []byte, stderr string) error {
+	cmd := strings.Join(args[:min(2, len(args))], " ")
 	var envelope struct {
 		Error struct {
 			Code    string `json:"code"`
@@ -60,15 +84,13 @@ func apiError(stdout []byte, stderr string) string {
 		} `json:"error"`
 	}
 	if json.Unmarshal(stdout, &envelope) == nil && envelope.Error.Code != "" {
-		if envelope.Error.Message != "" {
-			return envelope.Error.Code + ": " + envelope.Error.Message
-		}
-		return envelope.Error.Code
+		return &APIError{Command: cmd, Code: envelope.Error.Code, Message: envelope.Error.Message}
 	}
-	if s := strings.TrimSpace(stderr); s != "" {
-		return s
+	msg := strings.TrimSpace(stderr)
+	if msg == "" {
+		msg = strings.TrimSpace(string(stdout))
 	}
-	return strings.TrimSpace(string(stdout))
+	return &APIError{Command: cmd, Message: msg}
 }
 
 // createResult matches both worktree_created and workspace_created payloads:
@@ -122,11 +144,42 @@ func AgentStart(name, kind, paneID string, extraArgs []string) error {
 	return run(nil, args...)
 }
 
-// AgentPrompt submits a prompt and waits for the agent to settle (idle, done
-// or blocked), bounded by timeout.
-func AgentPrompt(target, text string, timeout time.Duration) error {
-	return run(nil, "agent", "prompt", target, text,
-		"--wait", "--timeout", fmt.Sprintf("%d", timeout.Milliseconds()))
+// CodeStalled is herdr's verdict when a submitted prompt produces no visible
+// state change within 5 seconds. It does not mean the prompt was lost — an
+// agent still loading its MCP servers takes longer than that to react.
+const CodeStalled = "agent_prompt_stalled"
+
+// AgentSubmit types a prompt into the agent and asks herdr to confirm the
+// agent reacted. A CodeStalled error is inconclusive; callers should check the
+// status before giving up.
+func AgentSubmit(target, text string) error {
+	return run(nil, "agent", "prompt", target, text, "--wait", "--until", "working",
+		"--timeout", "30000")
+}
+
+// AgentStatus reports the agent's current state: idle, working, blocked…
+func AgentStatus(target string) (string, error) {
+	var res struct {
+		Agent struct {
+			AgentStatus string `json:"agent_status"`
+		} `json:"agent"`
+	}
+	if err := run(&res, "agent", "get", target); err != nil {
+		return "", err
+	}
+	return res.Agent.AgentStatus, nil
+}
+
+// AgentSubmitPending presses Enter on the pane, submitting anything already
+// sitting in the composer. Harmless when the composer is empty.
+func AgentSubmitPending(paneID string) error {
+	return run(nil, "pane", "send-keys", paneID, "enter")
+}
+
+// AgentWait blocks until the agent settles (idle, done or blocked).
+func AgentWait(target string, timeout time.Duration) error {
+	return run(nil, "agent", "wait", target,
+		"--timeout", fmt.Sprintf("%d", timeout.Milliseconds()))
 }
 
 // ErrGone means the run's workspace no longer exists — the expected outcome
