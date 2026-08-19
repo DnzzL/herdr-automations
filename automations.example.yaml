@@ -6,6 +6,9 @@ automations:
     repo: ~/Projects/myapp
     workspace: worktree
     agent: claude
+    # Passed to the agent as --model. Leave it out and the agent picks for
+    # itself — which is how an unattended chore lands on a flagship model.
+    model: sonnet
     prompt: |
       Triage new GitHub issues: label them, close duplicates,
       draft replies for the ones needing more info.

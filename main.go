@@ -5,6 +5,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/DnzzL/herdr-automations/internal/config"
@@ -85,7 +86,8 @@ func list() error {
 		fmt.Printf("No automations. Create one with `herdr-automations add` or edit %s\n", config.Path())
 		return nil
 	}
-	fmt.Printf("%-24s %-16s %-9s %-8s %s\n", "NAME", "CRON", "WORKSPACE", "AGENT", "LAST RUN")
+	fmt.Printf("%-24s %-16s %-9s %-8s %-13s %s\n",
+		"NAME", "CRON", "WORKSPACE", "AGENT", "MODEL", "LAST RUN")
 	for _, a := range cfg.Automations {
 		last := "never"
 		if r, _ := history.LastRun(a.Name); r != nil {
@@ -95,9 +97,31 @@ func list() error {
 		if a.Disabled {
 			name += " (disabled)"
 		}
-		fmt.Printf("%-24s %-16s %-9s %-8s %s\n", name, a.Cron, a.Workspace, a.Agent, last)
+		// An unset model is not blank space — it is a decision left to the
+		// agent, and worth seeing next to the ones you made yourself.
+		model := a.Model
+		if model == "" {
+			model = "agent default"
+		}
+		fmt.Printf("%-24s %-16s %-9s %-8s %-13s %s\n",
+			name, a.Cron, a.Workspace, a.Agent, model, last)
 	}
+	printCollisions(cfg)
 	return nil
+}
+
+// printCollisions surfaces schedules that come due together. The scheduler
+// runs them all — this is a report, not a warning about something the plugin
+// is about to do differently.
+func printCollisions(cfg *config.Config) {
+	clashes := cfg.Collisions()
+	if len(clashes) == 0 {
+		return
+	}
+	fmt.Println("\nRunning together (Herdr starts them all in parallel):")
+	for _, c := range clashes {
+		fmt.Printf("  %s  %s\n", c.At.Format("Mon 02 Jan 15:04"), strings.Join(c.Names, ", "))
+	}
 }
 
 func runCmd(args []string) error {

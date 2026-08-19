@@ -29,11 +29,12 @@ automations:
     repo: ~/Projects/myapp        # repo the agent works in
     workspace: worktree           # worktree (default, fresh branch per run) | root
     agent: claude                 # any kind `herdr agent start` supports
+    model: sonnet                 # optional → passed as --model
     prompt: |
       Triage new GitHub issues: label them, close duplicates,
       draft replies for the ones needing more info.
     mcp_config: ~/.config/mcp/github.json   # optional → passed as --mcp-config
-    agent_args: ["--model", "opus"]         # optional, verbatim agent flags
+    agent_args: ["--verbose"]               # optional, verbatim agent flags
     timeout_minutes: 60           # optional, default 60
     catch_up_minutes: 120         # optional: how late a sleep-delayed run may start; -1 never
     # disabled: true              # keep the entry, stop scheduling it
@@ -55,6 +56,14 @@ Exactly one of `prompt` / `workflow` is required.
 - Cron is validated on load, and one bad entry blocks the whole file — re-read
   it after writing.
 - Times are local to the machine running the Herdr server.
+- **Always set `model`** on kinds that accept it (`claude`, `codex`, `cursor`,
+  `gemini`, `opencode`). Omitting it leaves an unattended run on whatever the
+  agent defaults to. Match the model to the job: a summary or a triage pass is
+  not a reason to reach for the most expensive one. Any other kind must use
+  `agent_args` — a `model` on those fails to load.
+- Automations due at the same minute **all start**: Herdr is a multi-agent
+  runtime and nothing here serialises. `herdr-automations list` reports the
+  overlaps; stagger the crons if running them at once is not what you want.
 - The daemon reloads within 30 seconds; no restart needed.
 - Occurrences missed while the machine slept run on wake within `catch_up_minutes`
   (default 120), otherwise they appear as `missed` in the history.

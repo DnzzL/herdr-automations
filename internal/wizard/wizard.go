@@ -42,6 +42,12 @@ func Run() error {
 			next = sched.Next(next)
 			fmt.Printf("    %s\n", next.Format("Mon 02 Jan 15:04"))
 		}
+		// Herdr runs every due automation; the scheduler never holds one back.
+		// Saying so here is the only moment the cron is still up for debate.
+		if clash := cfg.CollidesWith(cronExpr); len(clash) > 0 {
+			fmt.Printf("  heads up: %s already due at the same time — they will all run at once\n",
+				strings.Join(clash, ", "))
+		}
 		break
 	}
 
@@ -49,6 +55,13 @@ func Run() error {
 	repo := ask(in, "Repo path", cwd)
 	workspace := ask(in, "Workspace [worktree|root]", "worktree")
 	agent := ask(in, "Agent kind", "claude")
+	// Asked every time rather than defaulted in the file: an automation that
+	// does not say which model it uses is one that quietly picks whatever the
+	// agent picks, which is how a nightly chore ends up on a flagship model.
+	model := ""
+	if config.KindAcceptsModel(agent) {
+		model = ask(in, "Model (e.g. sonnet, opus — empty for the agent's own default)", "")
+	}
 
 	fmt.Print("Prompt (single line; leave empty to delegate to a herdr-workflows workflow):\n> ")
 	prompt, _ := in.ReadString('\n')
@@ -70,7 +83,7 @@ func Run() error {
 
 	cfg.Automations = append(cfg.Automations, config.Automation{
 		Name: name, Cron: cronExpr, Repo: repo,
-		Workspace: config.Workspace(workspace), Agent: agent,
+		Workspace: config.Workspace(workspace), Agent: agent, Model: model,
 		Prompt: prompt, Workflow: workflow,
 		MCPConfig: mcp, TimeoutMinutes: timeout,
 	})

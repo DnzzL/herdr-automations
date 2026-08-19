@@ -75,6 +75,9 @@ func execute(a config.Automation, paneID string) error {
 	}
 
 	args := a.AgentArgs
+	if a.Model != "" {
+		args = append([]string{"--model", a.Model}, args...)
+	}
 	if a.MCPConfig != "" {
 		args = append([]string{"--mcp-config", a.MCPConfig}, args...)
 	}

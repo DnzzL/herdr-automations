@@ -37,6 +37,8 @@ That's the whole feature. Every weekday at 9:00, a Claude (or Codex, or opencode
 - **One YAML entry per automation** — no DSL, no UI required, versionable
 - **Fresh worktree per run** (branch `auto/<name>-<timestamp>`), or the repo root — your working copy is never touched
 - **Agent-agnostic** — anything `herdr agent start` supports: `claude`, `codex`, `opencode`, `gemini`, `cursor`, …
+- **`model:` per automation** — a nightly chore has no business on your most expensive model. Set it where you read it; a kind that takes no `--model` is rejected when the file loads, not at 3am
+- **Schedules that overlap say so** — `list` and the wizard report automations due at the same minute. Herdr starts them all; the plugin never quietly holds one back, it just makes sure you knew
 - **MCP attach** — `mcp_config: path.json` hands the agent its MCP servers (GitHub, Slack, your DB…)
 - **Overlap guard** — a tick that fires while the previous run is still working is *skipped*, never queued into a pile-up
 - **Survives sleep** — occurrences are computed off the wall clock, so a run due while the laptop slept fires on wake (within `catch_up_minutes`) instead of vanishing; anything too late is recorded as `missed`
@@ -145,9 +147,10 @@ automations:
     repo: ~/Projects/myapp
     workspace: worktree           # worktree (default) | root
     agent: claude                 # any `herdr agent start --kind`
+    model: sonnet                 # optional → --model; kinds without the flag are rejected
     prompt: "…"                   # OR workflow: <name>  (delegates to hwf run)
     mcp_config: ~/.config/mcp/github.json   # optional → --mcp-config
-    agent_args: ["--model", "opus"]         # optional, verbatim agent flags
+    agent_args: ["--verbose"]               # optional, verbatim agent flags
     timeout_minutes: 60           # optional bound on the run
     catch_up_minutes: 120         # how late a sleep-delayed run may still start; -1 never
     disabled: true                # optional: keep it, don't schedule it
@@ -164,6 +167,13 @@ what didn't happen. Set `catch_up_minutes: -1` for automations that are pointles
 
 Timers alone don't survive sleep — macOS suspends the monotonic clock, so a job armed
 for 9am Monday can simply never fire. Hence the wall-clock loop.
+
+**Two automations due at the same minute — what runs?** Both. Herdr is a multi-agent
+runtime and `0 9 * * 1` means 9:00, so the scheduler doesn't queue, throttle or
+quietly stagger anything behind your back. What it does instead is tell you: the
+wizard warns while you're still choosing the cron, and `herdr-automations list`
+reports every overlap in the next week. If running them together isn't what you
+want, move a cron — one character, and the file still says what happens.
 
 **What happens to the worktrees?** They accumulate as reviewable workspaces — each run is a branch you can inspect, merge, or `herdr worktree remove`. Auto-cleanup of merged runs is on the roadmap.
 
