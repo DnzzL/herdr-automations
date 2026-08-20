@@ -127,6 +127,7 @@ herdr plugin pane open --plugin dnzzl.automations --entrypoint board --placement
 | `enter` | **Jump to the last run** — focuses the workspace that automation spawned, so you land right in the agent's terminal |
 | `r` | Run the selected automation now |
 | `e` | Open `automations.yaml` in `$EDITOR`, **cursor on that automation's line** |
+| `c` | Clean up the run worktrees whose work already landed — it counts them, asks `y/n`, and touches nothing else |
 | `j` / `k` | Move · `q` closes |
 
 Bind it to a chord so you never type that command again — in `~/.config/herdr/config.toml`:

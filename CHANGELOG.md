@@ -8,6 +8,8 @@ What changed for someone using the plugin. Dates are release dates.
   already landed — merged branches, and runs that produced no commit. Runs with
   a workspace still open, or with commits that exist nowhere else, are kept and
   told why. It asks before removing anything and never runs on a schedule.
+- The board cleans up too: `c` scans, says how many worktrees are finished with,
+  and waits for `y/n` before removing anything.
 - `list` says how many run worktrees exist and how many still have a workspace
   open: the ones nobody has read.
 

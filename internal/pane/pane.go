@@ -11,6 +11,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/DnzzL/herdr-automations/internal/cleanup"
 	"github.com/DnzzL/herdr-automations/internal/config"
 	"github.com/DnzzL/herdr-automations/internal/herdr"
 	"github.com/DnzzL/herdr-automations/internal/history"
@@ -37,11 +38,56 @@ type model struct {
 	err         error
 	notice      string
 	noticeStyle lipgloss.Style
+	// pending holds worktrees waiting on a y/n. Non-empty means the board is
+	// asking, and every other key is suspended until it is answered.
+	pending []cleanup.Candidate
 }
 
 type refreshMsg struct{}
 type ranMsg struct{ err error }
 type editedMsg struct{ err error }
+type scannedMsg struct {
+	removable []cleanup.Candidate
+	err       error
+}
+type cleanedMsg struct {
+	removed int
+	err     error
+}
+
+// scanCleanup finds the run worktrees whose work already landed. Everything
+// else -- open workspaces, unmerged commits -- is left alone and unmentioned:
+// the board offers a tidy-up, not a verdict on your branches.
+func scanCleanup() tea.Msg {
+	cfg, err := config.Load()
+	if err != nil {
+		return scannedMsg{err: err}
+	}
+	candidates, err := cleanup.Scan(cfg)
+	if err != nil {
+		return scannedMsg{err: err}
+	}
+	var removable []cleanup.Candidate
+	for _, c := range candidates {
+		if c.Removable() {
+			removable = append(removable, c)
+		}
+	}
+	return scannedMsg{removable: removable}
+}
+
+// removeAll reports the first refusal rather than a tally: git declines a dirty
+// checkout or an unmerged branch, and that is worth reading in full.
+func removeAll(candidates []cleanup.Candidate) tea.Msg {
+	removed := 0
+	for _, c := range candidates {
+		if err := cleanup.Remove(c); err != nil {
+			return cleanedMsg{removed: removed, err: err}
+		}
+		removed++
+	}
+	return cleanedMsg{removed: removed}
+}
 
 func Run() error {
 	_, err := tea.NewProgram(load(), tea.WithAltScreen()).Run()
@@ -80,6 +126,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		next.notice, next.noticeStyle = m.notice, m.noticeStyle
 		next.width = m.width
+		// The two-second refresh rebuilds the model; a question already on
+		// screen has to survive it, or answering it would land on nothing.
+		next.pending = m.pending
 		return next, tick()
 	case editedMsg:
 		next := load() // pick up whatever was just saved, including new entries
@@ -97,10 +146,50 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.setNotice(okStyle, "run finished")
 		}
 		return m, nil
+	case scannedMsg:
+		if msg.err != nil {
+			m.setNotice(failStyle, msg.err.Error())
+			return m, nil
+		}
+		if len(msg.removable) == 0 {
+			m.setNotice(dimStyle, "no run worktree is finished with — nothing to remove")
+			return m, nil
+		}
+		// Held until answered: the board asks the same question the CLI does
+		// rather than deleting because a key was pressed.
+		m.pending = msg.removable
+		m.setNotice(dimStyle, fmt.Sprintf(
+			"remove %d merged worktree(s) and their branches? y/n", len(msg.removable)))
+		return m, nil
+	case cleanedMsg:
+		m.pending = nil
+		if msg.err != nil {
+			m.setNotice(failStyle, msg.err.Error())
+		} else {
+			m.setNotice(okStyle, fmt.Sprintf("removed %d worktree(s)", msg.removed))
+		}
+		return m, nil
 	case tea.KeyMsg:
+		// A pending confirmation owns the keyboard until it is answered, so no
+		// stray j/k acts on a board that is asking a question.
+		if len(m.pending) > 0 {
+			pending := m.pending
+			if msg.String() == "y" {
+				m.setNotice(dimStyle, "removing…")
+				return m, func() tea.Msg { return removeAll(pending) }
+			}
+			m.pending = nil
+			m.setNotice(dimStyle, "nothing removed")
+			return m, nil
+		}
 		switch msg.String() {
 		case "q", "esc", "ctrl+c":
 			return m, tea.Quit
+		case "c":
+			// Scanning shells out to git per branch, so it happens on the
+			// keystroke rather than on every two-second refresh.
+			m.setNotice(dimStyle, "scanning run worktrees…")
+			return m, scanCleanup
 		case "up", "k":
 			if m.cursor > 0 {
 				m.cursor--
@@ -166,7 +255,7 @@ func (m model) noticeLine() string {
 
 func (m model) View() string {
 	s := titleStyle.Render("Automations") +
-		dimStyle.Render("  r: run · enter: jump to last run · e: edit config · j/k: move · q: quit") + "\n\n"
+		dimStyle.Render("  r: run · enter: jump to last run · e: edit · c: cleanup · j/k: move · q: quit") + "\n\n"
 	if m.err != nil {
 		return s + failStyle.Render("config error: "+m.err.Error()) + "\n"
 	}
