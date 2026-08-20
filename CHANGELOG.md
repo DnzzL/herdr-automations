@@ -2,7 +2,7 @@
 
 What changed for someone using the plugin. Dates are release dates.
 
-## Unreleased
+## v0.4.0 — 2026-08-20
 
 - `herdr-automations cleanup` removes the worktrees left by runs whose work
   already landed — merged branches, and runs that produced no commit. Runs with
