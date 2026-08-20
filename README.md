@@ -1,6 +1,6 @@
 # herdr-automations
 
-**Cron for your coding agents.** Schedule a prompt — Herdr wakes an agent in a fresh worktree and runs it. While you sleep.
+**Scheduled tasks for your coding agents.** A prompt, a cron line, and a fresh git worktree per run.
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Go](https://img.shields.io/badge/go-1.26+-00ADD8?logo=go)](go.mod)
@@ -11,6 +11,7 @@ automations:
   - name: issue-triage
     cron: "0 9 * * 1-5"
     repo: ~/Projects/myapp
+    model: sonnet
     prompt: |
       Triage new GitHub issues: label them, close duplicates,
       draft replies for the ones needing more info.
@@ -18,35 +19,49 @@ automations:
 
 ![The Automations board: schedules, last run status, and jumping into the config](docs/board.gif)
 
-That's the whole feature. Every weekday at 9:00, a Claude (or Codex, or opencode…) agent spawns in a fresh git worktree of `myapp`, gets that prompt, and works until it's done. You arrive to triaged issues and a run log.
+If you have used ChatGPT's Scheduled tasks, this is the same boundary — a prompt, a
+schedule, a model, and a choice between an isolated worktree and the repo itself —
+except it runs in your terminal, on your machine, against your repos, and the config
+is one YAML file you can keep in git.
+
+Every weekday at 9:00, a Claude (or Codex, or opencode…) agent spawns in a fresh
+worktree of `myapp`, gets that prompt, and works until it's done. You arrive to
+triaged issues, a branch to review, and a run log.
+[What it does to your machine](#what-this-does-to-your-machine) is stated outright.
 
 ## Why
 
-[Herdr](https://herdr.dev) keeps your agents alive when you close the laptop — but *you* still have to start them. Recurring chores (issue triage, dependency bumps, nightly test-flake hunts, changelog drafts) deserve better than you retyping the same prompt every morning.
-
-`herdr-automations` is the **trigger layer** the ecosystem was missing:
-
-|  | [herdr-workflows](https://github.com/aorumbayev/herdr-workflows) | **herdr-automations** |
-|---|---|---|
-| Answers | *"what steps to run?"* | *"**when** to run them?"* |
-| Model | multi-step YAML workflows, run on demand | prompt + cron, fired on schedule |
-| Together | `workflow: nightly-deps` in an automation runs a herdr-workflows workflow on a schedule | |
+[Herdr](https://herdr.dev) keeps your agents alive when you close the laptop — but
+*you* still have to start them. Recurring chores — issue triage, nightly flake hunts,
+a Friday digest — deserve better than you retyping the same prompt every morning.
 
 ## Highlights
 
-- **One YAML entry per automation** — no DSL, no UI required, versionable
-- **Fresh worktree per run** (branch `auto/<name>-<timestamp>`), or the repo root — your working copy is never touched
-- **Agent-agnostic** — anything `herdr agent start` supports: `claude`, `codex`, `opencode`, `gemini`, `cursor`, …
+- **Every run is a branch you can review** — `auto/<name>-<timestamp>` in a fresh worktree, so a run that went sideways is a diff you throw away, not a mess in your working copy. `workspace: root` when the task must see uncommitted state
+- **One YAML file** — no DSL, no store, no database. What the plugin knows is the file you wrote plus an append-only run log
+- **Installs without a toolchain** — prebuilt, checksum-verified binaries for macOS and Linux (arm64/amd64)
 - **`model:` per automation** — a nightly chore has no business on your most expensive model. Set it where you read it; a kind that takes no `--model` is rejected when the file loads, not at 3am
-- **Schedules that overlap say so** — `list` and the wizard report automations due at the same minute. Herdr starts them all; the plugin never quietly holds one back, it just makes sure you knew
-- **MCP attach** — `mcp_config: path.json` hands the agent its MCP servers (GitHub, Slack, your DB…)
-- **Overlap guard** — a tick that fires while the previous run is still working is *skipped*, never queued into a pile-up
 - **Survives sleep** — occurrences are computed off the wall clock, so a run due while the laptop slept fires on wake (within `catch_up_minutes`) instead of vanishing; anything too late is recorded as `missed`
+- **Schedules that overlap say so** — the wizard warns while you are still choosing the cron, and `list` reports every overlap in the week ahead. Herdr starts them all; the plugin never quietly holds one back, it just makes sure you knew
+- **Overlap guard** — a tick that fires while *that same* automation is still working is skipped, never queued into a pile-up
+- **Agent-agnostic** — anything `herdr agent start` supports: `claude`, `codex`, `opencode`, `gemini`, `cursor`, …
+- **MCP attach** — `mcp_config: path.json` hands the agent its MCP servers (GitHub, Slack, your DB…)
 - **Full run history** — append-only JSONL: `scheduled → running → done | failed | skipped | missed`, with workspace and pane IDs to jump back into
 - **Self-updating daemon** — it re-executes itself when the plugin binary changes, and a PID lock keeps a second scheduler from double-firing everything
 - **Live board** — an overlay pane inside Herdr: next run, last status, `r` to run now, `enter` to jump straight into the workspace a run created
-- **Agents can self-schedule** — a bundled [skill](skills/creating-automations/SKILL.md) teaches Claude Code the format: say *"bump my deps every night"* and the agent writes the entry itself
-- **One static Go binary** — no Node, no Python, no runtime on the machine
+- **Agents can self-schedule** — a bundled [skill](skills/creating-automations/SKILL.md) teaches Claude Code the format: say *"triage my errors every morning"* and the agent writes the entry itself
+
+## What it isn't
+
+**An automation is one prompt on a clock.** Not a sequencer, not a workflow engine,
+not a place to put branching logic. One prompt, one schedule, one run.
+
+**No store, no daemon to install, no state you can't read.** Two files: your
+`automations.yaml`, and `history.jsonl`. Uninstalling leaves both behind.
+
+**Nothing happens that the file doesn't say.** The scheduler doesn't queue, throttle,
+stagger or clean up behind your back. Where that could surprise you — overlapping
+schedules, accumulating worktrees — it reports and waits for you.
 
 ## Quick start
 
@@ -60,7 +75,8 @@ else builds from source and needs Go.
 
 **Three ways to add an automation**, all writing the same file:
 
-1. `herdr-automations add` — the wizard: validates the cron and previews the next three runs
+1. `herdr-automations add` — the wizard: validates the cron, previews the next three
+   runs, and warns if another automation is already due at the same time
 
    ![The add wizard: naming an automation, validating its cron, previewing the next runs](docs/wizard.gif)
 
@@ -72,7 +88,7 @@ else builds from source and needs Go.
 The daemon picks up edits within 30 seconds, no restart.
 
 ```bash
-herdr-automations list             # schedule + last run per automation
+herdr-automations list             # schedule, model and last run per automation
 herdr-automations run issue-triage # trigger now, don't wait for cron
 herdr-automations history         # what ran, when, how it ended
 ```
@@ -90,7 +106,7 @@ Then, in any new agent session, plain language is enough:
 
 > *"Every Monday at 9am, review the open PRs and tickets on myapp and propose a sprint."*
 
-> *"Schedule a nightly dependency bump on myapp — run the tests and open a PR if they pass."*
+> *"Every weekday morning, triage the new errors and file the real ones as tickets."*
 
 > *"Stop the flaky-hunt automation for now."*
 
@@ -131,7 +147,7 @@ flowchart LR
     A[cron tick] --> B{already<br>running?}
     B -- yes --> S[skip + log]
     B -- no --> C[herdr worktree create<br>branch auto/name-ts]
-    C --> D[herdr agent start<br>--kind claude -- --mcp-config …]
+    C --> D[herdr agent start<br>--kind claude -- --model … --mcp-config …]
     D --> E[herdr agent prompt<br>--wait --timeout]
     E --> F[history.jsonl<br>done / failed]
 ```
@@ -156,6 +172,18 @@ automations:
     disabled: true                # optional: keep it, don't schedule it
 ```
 
+## What this does to your machine
+
+`herdr-automations` schedules and records. It never runs your prompt itself: it asks
+Herdr to create a workspace and start an agent, and that agent runs under whatever
+permissions Herdr gives it. So the honest statement is about the scheduler, and the
+agent's own posture is Herdr's to describe.
+
+- **Writes to two places** — the plugin config dir (`herdr plugin config-dir dnzzl.automations`) and `~/.local/state/herdr/plugins/dnzzl.automations` for the run log. Nothing else on disk is touched by the plugin itself
+- **Creates git worktrees and branches** in the repos you name, `auto/<name>-<timestamp>`. It never removes one on its own
+- **Opens no ports**, phones nothing home, and downloads nothing at runtime — the only network access is `herdr plugin install` fetching a checksum-verified release binary
+- **`herdr plugin uninstall`** removes the plugin and leaves your config and history where they are
+
 ## FAQ
 
 **Does my machine need to be awake?** For the run to start, yes — and laptops sleep.
@@ -175,7 +203,16 @@ wizard warns while you're still choosing the cron, and `herdr-automations list`
 reports every overlap in the next week. If running them together isn't what you
 want, move a cron — one character, and the file still says what happens.
 
-**What happens to the worktrees?** They accumulate as reviewable workspaces — each run is a branch you can inspect, merge, or `herdr worktree remove`. Auto-cleanup of merged runs is on the roadmap.
+**What happens to the worktrees?** They accumulate on purpose: a run whose workspace
+is still open is a run nobody has looked at, which makes the Herdr sidebar the
+inbox. Closing it is how you say you're done. A `herdr-automations cleanup` that
+removes only the demonstrably handled ones — merged branches and runs that produced
+no commit — is next; it will never run on a schedule.
+
+**What about multi-step chores?** An automation is one prompt on a clock. If your
+chore is a sequence, put the sequence in a
+[herdr-workflows](https://github.com/aorumbayev/herdr-workflows) workflow and
+schedule it with `workflow: <name>` instead of `prompt:`.
 
 **Event triggers (on push, on PR, on `worktree.created`)?** Planned — Herdr's plugin manifest already supports `[[events]]`; cron came first because it's 90% of the value.
 
