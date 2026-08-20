@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/DnzzL/herdr-automations/internal/cleanup"
 	"github.com/DnzzL/herdr-automations/internal/config"
 	"github.com/DnzzL/herdr-automations/internal/daemon"
 	"github.com/DnzzL/herdr-automations/internal/history"
@@ -28,6 +29,7 @@ Usage:
   herdr-automations list             List automations with schedule and last run
   herdr-automations run <name>       Trigger an automation now
   herdr-automations history [name]   Show recent runs
+  herdr-automations cleanup          Remove run worktrees whose work already landed
   herdr-automations pane             Interactive board (used by the Herdr pane)
   herdr-automations install-skill    Teach your coding agent to write automations
   herdr-automations version          Print the version
@@ -49,6 +51,8 @@ func main() {
 		err = wizard.Run()
 	case "list":
 		err = list()
+	case "cleanup":
+		err = cleanupCmd(os.Args[2:])
 	case "run":
 		err = runCmd(os.Args[2:])
 	case "history":
@@ -107,7 +111,32 @@ func list() error {
 			name, a.Cron, a.Workspace, a.Agent, model, last)
 	}
 	printCollisions(cfg)
+	printWorktreeCount(cfg)
 	return nil
+}
+
+// printWorktreeCount says how many run worktrees are lying around and how many
+// still have a workspace open — the ones nobody has read yet. It counts and
+// tells; removing them stays an explicit command.
+func printWorktreeCount(cfg *config.Config) {
+	candidates, err := cleanup.Scan(cfg)
+	if err != nil || len(candidates) == 0 {
+		return
+	}
+	unread, removable := 0, 0
+	for _, c := range candidates {
+		switch {
+		case c.Verdict == cleanup.KeptOpen:
+			unread++
+		case c.Removable():
+			removable++
+		}
+	}
+	line := fmt.Sprintf("\n%d run worktrees, %d still open", len(candidates), unread)
+	if removable > 0 {
+		line += fmt.Sprintf(", %d merged — herdr-automations cleanup", removable)
+	}
+	fmt.Println(line)
 }
 
 // printCollisions surfaces schedules that come due together. The scheduler
@@ -122,6 +151,71 @@ func printCollisions(cfg *config.Config) {
 	for _, c := range clashes {
 		fmt.Printf("  %s  %s\n", c.At.Format("Mon 02 Jan 15:04"), strings.Join(c.Names, ", "))
 	}
+}
+
+// cleanupCmd reports what every run worktree is worth keeping for, then asks
+// once before removing the ones whose work already landed. It is never
+// scheduled: an open workspace is how you know a run still wants you.
+func cleanupCmd(args []string) error {
+	dryRun, assumeYes := false, false
+	for _, a := range args {
+		switch a {
+		case "--dry-run":
+			dryRun = true
+		case "--yes", "-y":
+			assumeYes = true
+		default:
+			return fmt.Errorf("unknown flag %q; cleanup takes --dry-run and --yes", a)
+		}
+	}
+
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
+	candidates, err := cleanup.Scan(cfg)
+	if err != nil {
+		return err
+	}
+	if len(candidates) == 0 {
+		fmt.Println("No run worktrees.")
+		return nil
+	}
+
+	var removable []cleanup.Candidate
+	for _, c := range candidates {
+		mark := "keep"
+		if c.Removable() {
+			mark = "remove"
+			removable = append(removable, c)
+		}
+		fmt.Printf("%-7s %-48s %s\n", mark, c.Branch, c.Verdict)
+	}
+	if len(removable) == 0 {
+		fmt.Println("\nNothing to remove.")
+		return nil
+	}
+
+	if dryRun {
+		fmt.Printf("\n%d would be removed. Drop --dry-run to do it.\n", len(removable))
+		return nil
+	}
+	if !assumeYes {
+		fmt.Printf("\nRemove %d worktree(s) and their branches? [y/N] ", len(removable))
+		var answer string
+		if _, err := fmt.Scanln(&answer); err != nil || !strings.EqualFold(answer, "y") {
+			fmt.Println("Nothing removed.")
+			return nil
+		}
+	}
+	for _, c := range removable {
+		if err := cleanup.Remove(c); err != nil {
+			fmt.Fprintln(os.Stderr, "kept:", err)
+			continue
+		}
+		fmt.Println("removed", c.Branch)
+	}
+	return nil
 }
 
 func runCmd(args []string) error {

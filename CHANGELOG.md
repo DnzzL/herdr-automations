@@ -2,6 +2,15 @@
 
 What changed for someone using the plugin. Dates are release dates.
 
+## Unreleased
+
+- `herdr-automations cleanup` removes the worktrees left by runs whose work
+  already landed — merged branches, and runs that produced no commit. Runs with
+  a workspace still open, or with commits that exist nowhere else, are kept and
+  told why. It asks before removing anything and never runs on a schedule.
+- `list` says how many run worktrees exist and how many still have a workspace
+  open: the ones nobody has read.
+
 ## v0.3.0 — 2026-08-19
 
 - `model:` per automation, passed to the agent as `--model`. An agent kind whose

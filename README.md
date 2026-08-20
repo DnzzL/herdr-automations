@@ -91,6 +91,7 @@ The daemon picks up edits within 30 seconds, no restart.
 herdr-automations list             # schedule, model and last run per automation
 herdr-automations run issue-triage # trigger now, don't wait for cron
 herdr-automations history         # what ran, when, how it ended
+herdr-automations cleanup         # drop the run worktrees whose work already landed
 ```
 
 ### Let your agent do the scheduling
@@ -180,7 +181,7 @@ permissions Herdr gives it. So the honest statement is about the scheduler, and 
 agent's own posture is Herdr's to describe.
 
 - **Writes to two places** — the plugin config dir (`herdr plugin config-dir dnzzl.automations`) and `~/.local/state/herdr/plugins/dnzzl.automations` for the run log. Nothing else on disk is touched by the plugin itself
-- **Creates git worktrees and branches** in the repos you name, `auto/<name>-<timestamp>`. It never removes one on its own
+- **Creates git worktrees and branches** in the repos you name, `auto/<name>-<timestamp>`. It never removes one on its own — `herdr-automations cleanup` is the only thing that deletes, it asks first, and it only touches `auto/` branches already contained in your default branch
 - **Opens no ports**, phones nothing home, and downloads nothing at runtime — the only network access is `herdr plugin install` fetching a checksum-verified release binary
 - **`herdr plugin uninstall`** removes the plugin and leaves your config and history where they are
 
@@ -204,10 +205,17 @@ reports every overlap in the next week. If running them together isn't what you
 want, move a cron — one character, and the file still says what happens.
 
 **What happens to the worktrees?** They accumulate on purpose: a run whose workspace
-is still open is a run nobody has looked at, which makes the Herdr sidebar the
-inbox. Closing it is how you say you're done. A `herdr-automations cleanup` that
-removes only the demonstrably handled ones — merged branches and runs that produced
-no commit — is next; it will never run on a schedule.
+is still open is a run nobody has looked at, which makes the Herdr sidebar the inbox.
+Closing it is how you say you're done.
+
+`herdr-automations cleanup` removes only the ones whose work already landed — the
+branch is an ancestor of the default branch, so either it was merged or the agent
+produced no commit at all. Anything with a workspace still open, or commits that
+exist nowhere else, is kept and told why. It prints its verdicts, asks once, and
+neither the worktree nor the branch is removed by force: git refuses a dirty
+checkout and refuses an unmerged branch, and those refusals are worth more than
+the tidiness. **It never runs on a schedule** — a reaper would delete the very
+signal that says which runs still want you.
 
 **What about multi-step chores?** An automation is one prompt on a clock. If your
 chore is a sequence, put the sequence in a

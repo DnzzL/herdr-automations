@@ -133,6 +133,28 @@ func WorkspaceCreate(cwd, label string) (workspaceID, paneID string, err error) 
 	return res.ids("workspace create")
 }
 
+// Worktree is one checkout backing a workspace. OpenWorkspaceID is empty once
+// the workspace has been closed, which is the only durable signal Herdr keeps
+// about whether anyone came back to look at a run.
+type Worktree struct {
+	Branch           string `json:"branch"`
+	Path             string `json:"path"`
+	OpenWorkspaceID  string `json:"open_workspace_id"`
+	IsLinkedWorktree bool   `json:"is_linked_worktree"`
+}
+
+// WorktreeList returns every worktree Herdr knows about for repo, including
+// the source checkout itself.
+func WorktreeList(repo string) ([]Worktree, error) {
+	var res struct {
+		Worktrees []Worktree `json:"worktrees"`
+	}
+	if err := run(&res, "worktree", "list", "--cwd", repo); err != nil {
+		return nil, err
+	}
+	return res.Worktrees, nil
+}
+
 // AgentStart launches an interactive agent in a pane sitting at a shell
 // prompt. extraArgs are forwarded to the agent executable (e.g. --mcp-config).
 func AgentStart(name, kind, paneID string, extraArgs []string) error {
