@@ -221,7 +221,9 @@ signal that says which runs still want you.
 **What about multi-step chores?** An automation is one prompt on a clock. If your
 chore is a sequence, put the sequence in a
 [herdr-workflows](https://github.com/aorumbayev/herdr-workflows) workflow and
-schedule it with `workflow: <name>` instead of `prompt:`.
+schedule it with `workflow: <name>` instead of `prompt:`. The run waits for the
+workflow and fails when it does, and it refuses to start at all when `hwf` isn't
+installed.
 
 **Event triggers (on push, on PR, on `worktree.created`)?** Planned — Herdr's plugin manifest already supports `[[events]]`; cron came first because it's 90% of the value.
 

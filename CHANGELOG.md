@@ -8,6 +8,11 @@ What changed for someone using the plugin. Dates are release dates.
   already landed — merged branches, and runs that produced no commit. Runs with
   a workspace still open, or with commits that exist nowhere else, are kept and
   told why. It asks before removing anything and never runs on a schedule.
+- A `workflow:` automation now reports what actually happened. It used to record
+  `done` as soon as the command was typed into the pane — including when
+  herdr-workflows was not installed at all. The runner now refuses to start when
+  `hwf` is missing, waits for the workflow to finish, and fails the run on a
+  non-zero exit.
 - The board cleans up too: `c` scans, says how many worktrees are finished with,
   and waits for `y/n` before removing anything.
 - `list` says how many run worktrees exist and how many still have a workspace

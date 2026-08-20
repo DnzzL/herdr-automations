@@ -6,6 +6,9 @@ package runner
 import (
 	"fmt"
 	"log"
+	"os/exec"
+	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -71,7 +74,7 @@ func execute(a config.Automation, paneID string) error {
 
 	if a.Workflow != "" {
 		// Delegation: herdr-workflows owns multi-step execution.
-		return herdr.PaneRun(paneID, "hwf", "run", a.Workflow)
+		return runWorkflow(paneID, a.Workflow, timeout)
 	}
 
 	args := a.AgentArgs
@@ -92,6 +95,64 @@ func execute(a config.Automation, paneID string) error {
 		return fmt.Errorf("waiting for the agent: %w", err)
 	}
 	return nil
+}
+
+// runWorkflow hands the run to herdr-workflows and waits for its verdict.
+//
+// A pane has no exit code to return, so the command is asked to print one
+// behind a marker and the screen is read back for it. Without that, launching
+// the command successfully was indistinguishable from the workflow succeeding,
+// and a `workflow:` automation reported done whatever happened — including
+// when hwf was not installed at all.
+func runWorkflow(paneID, name string, timeout time.Duration) error {
+	if _, err := exec.LookPath("hwf"); err != nil {
+		return fmt.Errorf("workflow %q needs herdr-workflows: hwf is not on PATH", name)
+	}
+
+	marker := fmt.Sprintf("HWF-%d", time.Now().UnixNano())
+	// The shell echoes the command it was given, so the marker appears twice on
+	// screen: once as this literal (with %d unexpanded) and once with the real
+	// status. Only the latter matches a digit, which is what exitCode looks for.
+	command := fmt.Sprintf("hwf run %s; printf '\\n%s:%%d\\n' $?", shellQuote(name), marker)
+	if err := herdr.PaneRun(paneID, "sh", "-c", command); err != nil {
+		return fmt.Errorf("running workflow %s: %w", name, err)
+	}
+
+	deadline := time.Now().Add(timeout)
+	for {
+		screen, err := herdr.PaneRead(paneID, 200)
+		if err == nil {
+			if code, done := exitCode(screen, marker); done {
+				if code != 0 {
+					return fmt.Errorf("workflow %s exited %d", name, code)
+				}
+				return nil
+			}
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("workflow %s did not finish within %s", name, timeout)
+		}
+		time.Sleep(5 * time.Second)
+	}
+}
+
+// exitCode finds the status the marker was printed with. The last match wins:
+// a pane may hold output from an earlier run of the same automation.
+func exitCode(screen, marker string) (int, bool) {
+	matches := regexp.MustCompile(regexp.QuoteMeta(marker)+`:(\d+)`).FindAllStringSubmatch(screen, -1)
+	if len(matches) == 0 {
+		return 0, false
+	}
+	code, err := strconv.Atoi(matches[len(matches)-1][1])
+	if err != nil {
+		return 0, false
+	}
+	return code, true
+}
+
+// shellQuote makes a workflow name safe to interpolate into the sh -c string.
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
 // submit gets the prompt in front of the agent and confirms it started working.

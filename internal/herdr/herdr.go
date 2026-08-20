@@ -230,3 +230,18 @@ func Focus(workspaceID, paneID string) error {
 func PaneRun(paneID string, command ...string) error {
 	return run(nil, append([]string{"pane", "run", paneID}, command...)...)
 }
+
+// PaneRead returns the pane's recent terminal output. A pane is the only
+// channel a delegated command has, so this is how its result gets read back.
+// Unlike the rest of the API this one prints the screen, not a JSON envelope.
+func PaneRead(paneID string, lines int) (string, error) {
+	cmd := exec.Command(bin(), "pane", "read", paneID,
+		"--source", "recent", "--lines", fmt.Sprintf("%d", lines), "--format", "text")
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return "", newAPIError([]string{"pane", "read"}, stdout.Bytes(), stderr.String())
+	}
+	return stdout.String(), nil
+}
