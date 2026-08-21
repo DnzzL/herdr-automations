@@ -1,6 +1,77 @@
 package runner
 
-import "testing"
+import (
+	"errors"
+	"testing"
+	"time"
+
+	"github.com/DnzzL/herdr-automations/internal/herdr"
+)
+
+// paneBusy is the error herdr returns for a pane whose shell has not spawned.
+func paneBusy() error {
+	return &herdr.APIError{
+		Command: "agent start",
+		Code:    herdr.CodePaneBusy,
+		Message: "agent target pane w1T:p1 is not an available shell",
+	}
+}
+
+func TestStartAgentRetriesUntilThePaneHasAShell(t *testing.T) {
+	paneReadyPoll = time.Millisecond
+	calls := 0
+	err := startAgent(func() error {
+		calls++
+		if calls < 3 {
+			return paneBusy()
+		}
+		return nil
+	}, time.Minute)
+
+	if err != nil {
+		t.Fatalf("want the third attempt to stick, got %v", err)
+	}
+	if calls != 3 {
+		t.Errorf("called %d times, want 3", calls)
+	}
+}
+
+func TestStartAgentGivesUpOnAPaneThatNeverComesUp(t *testing.T) {
+	paneReadyPoll = time.Millisecond
+	calls := 0
+	err := startAgent(func() error { calls++; return paneBusy() }, 20*time.Millisecond)
+
+	if !herdr.HasCode(err, herdr.CodePaneBusy) {
+		t.Fatalf("want the busy error reported, got %v", err)
+	}
+	if calls < 2 {
+		t.Errorf("called %d times, want more than one attempt", calls)
+	}
+}
+
+func TestStartAgentDoesNotRetryARealFailure(t *testing.T) {
+	paneReadyPoll = time.Millisecond
+	calls := 0
+	want := errors.New("agent start: unknown kind \"clyde\"")
+	err := startAgent(func() error { calls++; return want }, time.Minute)
+
+	if !errors.Is(err, want) {
+		t.Fatalf("got %v, want it passed through", err)
+	}
+	if calls != 1 {
+		t.Errorf("called %d times, want 1: a bad agent kind will not fix itself", calls)
+	}
+}
+
+func TestStartAgentDoesNotWaitWhenThePaneIsReady(t *testing.T) {
+	calls := 0
+	if err := startAgent(func() error { calls++; return nil }, 0); err != nil {
+		t.Fatalf("got %v", err)
+	}
+	if calls != 1 {
+		t.Errorf("called %d times, want 1", calls)
+	}
+}
 
 func TestSlugProducesValidBranchNames(t *testing.T) {
 	cases := map[string]string{

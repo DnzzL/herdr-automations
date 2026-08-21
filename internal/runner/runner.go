@@ -85,7 +85,10 @@ func execute(a config.Automation, paneID string) error {
 		args = append([]string{"--mcp-config", a.MCPConfig}, args...)
 	}
 	// Herdr requires agent names to be lowercase, 1-32 chars, [a-z0-9-_].
-	if err := herdr.AgentStart(agentName(a.Name), a.Agent, paneID, args); err != nil {
+	start := func() error {
+		return herdr.AgentStart(agentName(a.Name), a.Agent, paneID, args)
+	}
+	if err := startAgent(start, paneReady); err != nil {
 		return fmt.Errorf("start %s agent: %w", a.Agent, err)
 	}
 	if err := submit(paneID, a.Prompt); err != nil {
@@ -153,6 +156,34 @@ func exitCode(screen, marker string) (int, bool) {
 // shellQuote makes a workflow name safe to interpolate into the sh -c string.
 func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
+// paneReady is how long a freshly provisioned pane gets to become a shell.
+// Creating the workspace normally hands one back in milliseconds; the wait
+// exists for the run that starts as the machine wakes, where herdr answered
+// `worktree create` a quarter of an hour after it was asked and the pane's
+// shell was still not up.
+const paneReady = 2 * time.Minute
+
+// paneReadyPoll is the gap between attempts. A variable so tests don't sleep.
+var paneReadyPoll = 5 * time.Second
+
+// startAgent launches the agent, retrying while herdr says the pane is not a
+// shell yet. Any other error is final — a bad agent kind or a missing binary
+// will not fix itself, and retrying only delays the report.
+func startAgent(start func() error, within time.Duration) error {
+	deadline := time.Now().Add(within)
+	for {
+		err := start()
+		if err == nil || !herdr.HasCode(err, herdr.CodePaneBusy) {
+			return err
+		}
+		if !time.Now().Before(deadline) {
+			return err
+		}
+		log.Printf("pane has no shell yet, retrying agent start in %s", paneReadyPoll)
+		time.Sleep(paneReadyPoll)
+	}
 }
 
 // submit gets the prompt in front of the agent and confirms it started working.
