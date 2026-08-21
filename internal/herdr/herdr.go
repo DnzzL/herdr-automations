@@ -29,7 +29,7 @@ func run(out any, args ...string) error {
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
-		return newAPIError(args, stdout.Bytes(), stderr.String())
+		return newAPIError(args, stdout.Bytes(), stderr.String(), err)
 	}
 	if out == nil {
 		return nil
@@ -75,7 +75,12 @@ func HasCode(err error, code string) bool {
 	return errors.As(err, &apiErr) && apiErr.Code == code
 }
 
-func newAPIError(args []string, stdout []byte, stderr string) error {
+// newAPIError turns a failed herdr invocation into one readable line. runErr
+// is the error from cmd.Run and is the last resort: a herdr that exits non-zero
+// while printing nothing at all used to produce a bare "worktree create: ",
+// which says only that the run failed — not that it exited 1, was killed, or
+// was never on PATH.
+func newAPIError(args []string, stdout []byte, stderr string, runErr error) error {
 	cmd := strings.Join(args[:min(2, len(args))], " ")
 	var envelope struct {
 		Error struct {
@@ -89,6 +94,9 @@ func newAPIError(args []string, stdout []byte, stderr string) error {
 	msg := strings.TrimSpace(stderr)
 	if msg == "" {
 		msg = strings.TrimSpace(string(stdout))
+	}
+	if msg == "" && runErr != nil {
+		msg = runErr.Error()
 	}
 	return &APIError{Command: cmd, Message: msg}
 }
@@ -166,6 +174,12 @@ func AgentStart(name, kind, paneID string, extraArgs []string) error {
 	return run(nil, args...)
 }
 
+// CodePaneBusy is herdr's refusal to start an agent in a pane that is not
+// sitting at a shell prompt. It means the workspace exists but its shell has
+// not spawned yet, so it is a wait-and-retry rather than a dead run: a
+// sleep-delayed worktree create can return minutes before the pane is usable.
+const CodePaneBusy = "agent_pane_busy"
+
 // CodeStalled is herdr's verdict when a submitted prompt produces no visible
 // state change within 5 seconds. It does not mean the prompt was lost — an
 // agent still loading its MCP servers takes longer than that to react.
@@ -241,7 +255,7 @@ func PaneRead(paneID string, lines int) (string, error) {
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
-		return "", newAPIError([]string{"pane", "read"}, stdout.Bytes(), stderr.String())
+		return "", newAPIError([]string{"pane", "read"}, stdout.Bytes(), stderr.String(), err)
 	}
 	return stdout.String(), nil
 }
