@@ -1,6 +1,7 @@
 // Package herdr is a thin client over the herdr CLI (which itself fronts the
 // socket API). Herdr injects HERDR_BIN_PATH for plugins; outside a plugin
-// context we fall back to `herdr` on PATH.
+// context, or when that path no longer resolves, we fall back to `herdr` on
+// PATH.
 package herdr
 
 import (
@@ -14,11 +15,22 @@ import (
 	"time"
 )
 
+// bin locates the herdr CLI. HERDR_BIN_PATH is herdr telling a plugin exactly
+// which binary to call back into, so it wins — but only if it still exists. A
+// long-running herdr whose binary was moved or uninstalled under it (a package
+// manager switch, say) keeps advertising the old path, and taking it on faith
+// made every call fail with a fork/exec error the user could do nothing about.
 func bin() string {
-	if b := os.Getenv("HERDR_BIN_PATH"); b != "" {
+	if b := os.Getenv("HERDR_BIN_PATH"); b != "" && usable(b) {
 		return b
 	}
 	return "herdr"
+}
+
+// usable reports whether path is something we could actually execute.
+func usable(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && !info.IsDir() && info.Mode()&0o111 != 0
 }
 
 // run executes a herdr subcommand and decodes the socket-API JSON envelope
