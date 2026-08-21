@@ -2,6 +2,19 @@
 
 What changed for someone using the plugin. Dates are release dates.
 
+## v0.4.1 — 2026-08-21
+
+- A run that comes due while the machine is asleep no longer dies on waking.
+  Creating its worktree can return a second before the pane's shell is at a
+  prompt, and the agent was started into it immediately: herdr refused, and the
+  run was recorded as failed having done nothing at all. The runner now waits
+  for the shell, for up to two minutes. Every other start failure still fails
+  the run immediately — a misspelled agent kind will not fix itself.
+- A failed run says why it failed. When the herdr CLI exited without printing
+  anything, the history recorded a bare `worktree create:` — enough to know the
+  run had failed and nothing more. It now reports the exit status, the signal
+  that killed it, or that the binary was not found.
+
 ## v0.4.0 — 2026-08-20
 
 - `herdr-automations cleanup` removes the worktrees left by runs whose work
