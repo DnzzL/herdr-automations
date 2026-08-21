@@ -192,6 +192,12 @@ func AgentStart(name, kind, paneID string, extraArgs []string) error {
 // sleep-delayed worktree create can return minutes before the pane is usable.
 const CodePaneBusy = "agent_pane_busy"
 
+// CodeAgentGone means there is no agent in the target pane any more — the
+// workspace was closed, or the agent exited on its own. herdr only reports it
+// when the call it was given returns, so a wait handed the run's whole timeout
+// sits on a dead pane for that long before saying so.
+const CodeAgentGone = "agent_not_running"
+
 // CodeStalled is herdr's verdict when a submitted prompt produces no visible
 // state change within 5 seconds. It does not mean the prompt was lost — an
 // agent still loading its MCP servers takes longer than that to react.

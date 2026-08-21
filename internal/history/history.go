@@ -25,6 +25,10 @@ const (
 	// typically the machine was asleep past the catch-up window. Recording it
 	// is the point: a silently absent run is worse than a visible failure.
 	StatusMissed Status = "missed"
+	// StatusCancelled records a run whose workspace was closed under it.
+	// Closing a run's workspace is how you call one off, so it is not a
+	// failure: nothing broke, somebody decided.
+	StatusCancelled Status = "cancelled"
 )
 
 type Record struct {

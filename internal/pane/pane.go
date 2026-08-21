@@ -309,6 +309,9 @@ func statusStyle(r row) lipgloss.Style {
 		return failStyle
 	case history.StatusDone:
 		return okStyle
+	case history.StatusCancelled:
+		// Somebody closed it on purpose; there is nothing here to alarm about.
+		return dimStyle
 	default:
 		return lipgloss.NewStyle()
 	}

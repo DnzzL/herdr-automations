@@ -4,6 +4,7 @@
 package runner
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"os/exec"
@@ -50,11 +51,20 @@ func Run(a config.Automation, trigger string) error {
 	record(id, a.Name, trigger, history.StatusRunning, workspaceID, paneID, "")
 
 	if err := execute(a, paneID); err != nil {
-		record(id, a.Name, trigger, history.StatusFailed, workspaceID, paneID, err.Error())
+		record(id, a.Name, trigger, statusFor(err), workspaceID, paneID, err.Error())
 		return err
 	}
 	record(id, a.Name, trigger, history.StatusDone, workspaceID, paneID, "")
 	return nil
+}
+
+// statusFor decides how a run that ended in err is remembered. Only a workspace
+// closed under the run is not a failure.
+func statusFor(err error) history.Status {
+	if errors.Is(err, ErrCancelled) {
+		return history.StatusCancelled
+	}
+	return history.StatusFailed
 }
 
 func provision(a config.Automation) (workspaceID, paneID string, err error) {
@@ -94,10 +104,58 @@ func execute(a config.Automation, paneID string) error {
 	if err := submit(paneID, a.Prompt); err != nil {
 		return err
 	}
-	if err := herdr.AgentWait(paneID, timeout); err != nil {
+	wait := func(d time.Duration) error { return herdr.AgentWait(paneID, d) }
+	if err := waitForAgent(wait, timeout); err != nil {
 		return fmt.Errorf("waiting for the agent: %w", err)
 	}
 	return nil
+}
+
+// ErrCancelled means the run's workspace was closed while it was working.
+// Closing it is the gesture for calling a run off, so the run is reported
+// cancelled rather than failed.
+var ErrCancelled = errors.New("the run's workspace was closed")
+
+// agentWaitSlice bounds one herdr wait call. herdr reports a vanished pane only
+// when the call it was given returns, so this is how long a cancelled run keeps
+// a slot in inFlight — not something to make long.
+var agentWaitSlice = 30 * time.Second
+
+// waitForAgent blocks until the agent settles, the run is cancelled, or the
+// timeout runs out.
+//
+// It waits in slices rather than handing herdr the whole timeout at once. A run
+// whose workspace was closed thirteen seconds in used to sit here for the full
+// forty-five minutes before anyone was told, holding the automation's inFlight
+// slot the whole time and skipping the next occurrence.
+func waitForAgent(wait func(time.Duration) error, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	var last error
+	for {
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			if last != nil {
+				return last
+			}
+			return fmt.Errorf("the agent was still working after %s", timeout)
+		}
+		slice := agentWaitSlice
+		if remaining < slice {
+			slice = remaining
+		}
+
+		err := wait(slice)
+		if err == nil {
+			return nil
+		}
+		if herdr.HasCode(err, herdr.CodeAgentGone) {
+			return ErrCancelled
+		}
+		// The slice expired with the agent still working, which is the normal
+		// case. Keep it: if the deadline passes it is the most accurate thing
+		// we have to report.
+		last = err
+	}
 }
 
 // runWorkflow hands the run to herdr-workflows and waits for its verdict.
