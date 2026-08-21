@@ -2,6 +2,20 @@
 
 What changed for someone using the plugin. Dates are release dates.
 
+## v0.4.2 — 2026-08-21
+
+- Closing a run's workspace now ends the run. It is the natural way to call one
+  off, but the runner sat waiting for the agent until the automation's whole
+  timeout expired — a 45-minute run cancelled thirteen seconds in was reported
+  three quarters of an hour later, and blocked the next occurrence of the same
+  automation in the meantime. The run is now recorded as `cancelled`, not
+  `failed`: nothing broke, somebody decided.
+- The plugin survives herdr being reinstalled under it. Herdr tells plugins
+  which binary to call back into, and a herdr running since before its own
+  binary moved — a package manager switch, an uninstall — keeps naming a path
+  that no longer exists. `cleanup` and the board died on it with a fork/exec
+  error. They now fall back to `herdr` on PATH.
+
 ## v0.4.1 — 2026-08-21
 
 - A run that comes due while the machine is asleep no longer dies on waking.

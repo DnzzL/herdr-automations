@@ -1,6 +1,6 @@
 id = "dnzzl.automations"
 name = "Automations"
-version = "0.4.1"
+version = "0.4.2"
 min_herdr_version = "0.8.0"
 description = "Cron-scheduled agent prompts for Herdr — the trigger layer: prompt + cron, agent launched in a fresh worktree or the repo root."
 platforms = ["linux", "macos"]
