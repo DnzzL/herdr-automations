@@ -2,6 +2,12 @@
 
 What changed for someone using the plugin. Dates are release dates.
 
+## Unreleased
+
+- Pi automations can now pin both their provider and model with `provider:` and
+  `model:`. The wizard asks for both, `list` shows the selected route, and
+  unsupported `--provider` or `--model` combinations fail during config load.
+
 ## v0.4.2 — 2026-08-21
 
 - Closing a run's workspace now ends the run. It is the natural way to call one

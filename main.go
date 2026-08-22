@@ -90,8 +90,8 @@ func list() error {
 		fmt.Printf("No automations. Create one with `herdr-automations add` or edit %s\n", config.Path())
 		return nil
 	}
-	fmt.Printf("%-24s %-16s %-9s %-8s %-13s %s\n",
-		"NAME", "CRON", "WORKSPACE", "AGENT", "MODEL", "LAST RUN")
+	fmt.Printf("%-24s %-16s %-9s %-8s %-16s %-13s %s\n",
+		"NAME", "CRON", "WORKSPACE", "AGENT", "PROVIDER", "MODEL", "LAST RUN")
 	for _, a := range cfg.Automations {
 		last := "never"
 		if r, _ := history.LastRun(a.Name); r != nil {
@@ -103,12 +103,19 @@ func list() error {
 		}
 		// An unset model is not blank space — it is a decision left to the
 		// agent, and worth seeing next to the ones you made yourself.
+		provider := "-"
+		if config.KindAcceptsProvider(a.Agent) {
+			provider = a.Provider
+			if provider == "" {
+				provider = "agent default"
+			}
+		}
 		model := a.Model
 		if model == "" {
 			model = "agent default"
 		}
-		fmt.Printf("%-24s %-16s %-9s %-8s %-13s %s\n",
-			name, a.Cron, a.Workspace, a.Agent, model, last)
+		fmt.Printf("%-24s %-16s %-9s %-8s %-16s %-13s %s\n",
+			name, a.Cron, a.Workspace, a.Agent, provider, model, last)
 	}
 	printCollisions(cfg)
 	printWorktreeCount(cfg)

@@ -28,8 +28,9 @@ automations:
     cron: "0 9 * * 1-5"           # 5-field crontab, or @daily / @hourly / @weekly
     repo: ~/Projects/myapp        # repo the agent works in
     workspace: worktree           # worktree (default, fresh branch per run) | root
-    agent: claude                 # any kind `herdr agent start` supports
-    model: sonnet                 # optional → passed as --model
+    agent: pi                     # any kind `herdr agent start` supports
+    provider: openai-codex        # optional → passed as --provider for pi
+    model: gpt-5.6-sol            # optional → passed as --model
     prompt: |
       Triage new GitHub issues: label them, close duplicates,
       draft replies for the ones needing more info.
@@ -57,10 +58,13 @@ Exactly one of `prompt` / `workflow` is required.
   it after writing.
 - Times are local to the machine running the Herdr server.
 - **Always set `model`** on kinds that accept it (`claude`, `codex`, `cursor`,
-  `gemini`, `opencode`). Omitting it leaves an unattended run on whatever the
-  agent defaults to. Match the model to the job: a summary or a triage pass is
-  not a reason to reach for the most expensive one. Any other kind must use
+  `gemini`, `opencode`, `pi`). Omitting it leaves an unattended run on whatever
+  the agent defaults to. Match the model to the job: a summary or a triage pass
+  is not a reason to reach for the most expensive one. Any other kind must use
   `agent_args` — a `model` on those fails to load.
+- **Always set `provider` for Pi** so an unattended run stays on the intended
+  account and billing route. Other kinds must use `agent_args` if they have a
+  different provider flag; `provider` currently validates only for `agent: pi`.
 - Automations due at the same minute **all start**: Herdr is a multi-agent
   runtime and nothing here serialises. `herdr-automations list` reports the
   overlaps; stagger the crons if running them at once is not what you want.

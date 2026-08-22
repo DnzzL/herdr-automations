@@ -87,13 +87,7 @@ func execute(a config.Automation, paneID string) error {
 		return runWorkflow(paneID, a.Workflow, timeout)
 	}
 
-	args := a.AgentArgs
-	if a.Model != "" {
-		args = append([]string{"--model", a.Model}, args...)
-	}
-	if a.MCPConfig != "" {
-		args = append([]string{"--mcp-config", a.MCPConfig}, args...)
-	}
+	args := agentArgs(a)
 	// Herdr requires agent names to be lowercase, 1-32 chars, [a-z0-9-_].
 	start := func() error {
 		return herdr.AgentStart(agentName(a.Name), a.Agent, paneID, args)
@@ -109,6 +103,20 @@ func execute(a config.Automation, paneID string) error {
 		return fmt.Errorf("waiting for the agent: %w", err)
 	}
 	return nil
+}
+
+func agentArgs(a config.Automation) []string {
+	args := append([]string(nil), a.AgentArgs...)
+	if a.Model != "" {
+		args = append([]string{"--model", a.Model}, args...)
+	}
+	if a.Provider != "" {
+		args = append([]string{"--provider", a.Provider}, args...)
+	}
+	if a.MCPConfig != "" {
+		args = append([]string{"--mcp-config", a.MCPConfig}, args...)
+	}
+	return args
 }
 
 // ErrCancelled means the run's workspace was closed while it was working.

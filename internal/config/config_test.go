@@ -93,6 +93,9 @@ automations:
 		"model on a kind that takes none": `
 automations:
   - {name: a, cron: "@daily", repo: /x, prompt: p, agent: droid, model: opus}`,
+		"provider on a kind that takes none": `
+automations:
+  - {name: a, cron: "@daily", repo: /x, prompt: p, agent: claude, provider: xai}`,
 	}
 	for label, yaml := range cases {
 		t.Run(label, func(t *testing.T) {
@@ -101,6 +104,20 @@ automations:
 				t.Fatalf("expected error for %s", label)
 			}
 		})
+	}
+}
+
+func TestLoadAcceptsPiProviderAndModel(t *testing.T) {
+	withConfig(t, `
+automations:
+  - {name: a, cron: "@daily", repo: /x, prompt: p, agent: pi, provider: xai, model: grok-4.6}`)
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := cfg.Automations[0]
+	if a.Provider != "xai" || a.Model != "grok-4.6" {
+		t.Fatalf("pi route not kept: provider=%q model=%q", a.Provider, a.Model)
 	}
 }
 
