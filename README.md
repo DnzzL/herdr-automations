@@ -40,7 +40,7 @@ a Friday digest — deserve better than you retyping the same prompt every morni
 - **Every run is a branch you can review** — `auto/<name>-<timestamp>` in a fresh worktree, so a run that went sideways is a diff you throw away, not a mess in your working copy. `workspace: root` when the task must see uncommitted state
 - **One YAML file** — no DSL, no store, no database. What the plugin knows is the file you wrote plus an append-only run log
 - **Installs without a toolchain** — prebuilt, checksum-verified binaries for macOS and Linux (arm64/amd64)
-- **`model:` per automation** — a nightly chore has no business on your most expensive model. Set it where you read it; a kind that takes no `--model` is rejected when the file loads, not at 3am
+- **Provider and model per automation** — a nightly chore has no business on an accidental route or your most expensive model. Pi runs can set `provider:` and `model:` explicitly; unsupported flags are rejected when the file loads, not at 3am
 - **Survives sleep** — occurrences are computed off the wall clock, so a run due while the laptop slept fires on wake (within `catch_up_minutes`) instead of vanishing; anything too late is recorded as `missed`
 - **Schedules that overlap say so** — the wizard warns while you are still choosing the cron, and `list` reports every overlap in the week ahead. Herdr starts them all; the plugin never quietly holds one back, it just makes sure you knew
 - **Overlap guard** — a tick that fires while *that same* automation is still working is skipped, never queued into a pile-up
@@ -154,7 +154,7 @@ flowchart LR
     E --> F[history.jsonl<br>done / failed]
 ```
 
-Everything goes through the `herdr` CLI — the same socket API agents themselves use. No private hooks, nothing to break on Herdr upgrades.
+Everything goes through the `herdr` CLI — the same socket API agents themselves use. No private hooks, nothing to break on Herdr upgrades. For example, a Pi entry with `provider: xai` and `model: grok-4.6` starts `pi --provider xai --model grok-4.6` through Herdr.
 
 ## Full entry reference
 
@@ -164,8 +164,9 @@ automations:
     cron: "0 9 * * 1-5"           # 5-field crontab, or @daily / @hourly / @weekly
     repo: ~/Projects/myapp
     workspace: worktree           # worktree (default) | root
-    agent: claude                 # any `herdr agent start --kind`
-    model: sonnet                 # optional → --model; kinds without the flag are rejected
+    agent: pi                     # any `herdr agent start --kind`
+    provider: openai-codex        # optional → --provider; currently supported for pi
+    model: gpt-5.6-sol            # optional → --model; kinds without the flag are rejected
     prompt: "…"                   # OR workflow: <name>  (delegates to hwf run)
     mcp_config: ~/.config/mcp/github.json   # optional → --mcp-config
     agent_args: ["--verbose"]               # optional, verbatim agent flags

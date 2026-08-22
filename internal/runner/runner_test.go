@@ -3,9 +3,11 @@ package runner
 import (
 	"errors"
 	"fmt"
+	"reflect"
 	"testing"
 	"time"
 
+	"github.com/DnzzL/herdr-automations/internal/config"
 	"github.com/DnzzL/herdr-automations/internal/herdr"
 	"github.com/DnzzL/herdr-automations/internal/history"
 )
@@ -16,6 +18,17 @@ func paneBusy() error {
 		Command: "agent start",
 		Code:    herdr.CodePaneBusy,
 		Message: "agent target pane w1T:p1 is not an available shell",
+	}
+}
+
+func TestAgentArgsIncludePiProviderAndModel(t *testing.T) {
+	a := config.Automation{
+		Agent: "pi", Provider: "xai", Model: "grok-4.6",
+		AgentArgs: []string{"--thinking", "high"},
+	}
+	want := []string{"--provider", "xai", "--model", "grok-4.6", "--thinking", "high"}
+	if got := agentArgs(a); !reflect.DeepEqual(got, want) {
+		t.Fatalf("agentArgs() = %q, want %q", got, want)
 	}
 }
 

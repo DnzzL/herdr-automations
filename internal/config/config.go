@@ -45,6 +45,9 @@ type Automation struct {
 	// The value is passed through untouched: model names move faster than any
 	// list we could keep here, so a typo surfaces when the agent refuses it.
 	Model string `yaml:"model,omitempty"`
+	// Provider handed to the agent executable as --provider. Empty leaves the
+	// agent on its own default. Currently supported by the pi agent kind.
+	Provider string `yaml:"provider,omitempty"`
 	// Prompt submitted to the agent. Mutually exclusive with Workflow.
 	Prompt string `yaml:"prompt,omitempty"`
 	// Workflow delegates execution to herdr-workflows: `hwf run <name>`.
@@ -112,6 +115,9 @@ func (a *Automation) validate() error {
 	if a.Model != "" && !KindAcceptsModel(a.Agent) {
 		return fmt.Errorf("%s: agent %q takes no --model; put the flag it does take in agent_args", a.Name, a.Agent)
 	}
+	if a.Provider != "" && !KindAcceptsProvider(a.Agent) {
+		return fmt.Errorf("%s: agent %q takes no --provider; put the flag it does take in agent_args", a.Name, a.Agent)
+	}
 	return nil
 }
 
@@ -125,10 +131,20 @@ var modelFlagKinds = map[string]bool{
 	"cursor":   true,
 	"gemini":   true,
 	"opencode": true,
+	"pi":       true,
 }
 
 // KindAcceptsModel reports whether this agent kind understands `--model`.
 func KindAcceptsModel(kind string) bool { return modelFlagKinds[kind] }
+
+// providerFlagKinds are the agent kinds whose executable takes `--provider`.
+// Keep this verified list narrow for the same fail-before-3am reason as modelFlagKinds.
+var providerFlagKinds = map[string]bool{
+	"pi": true,
+}
+
+// KindAcceptsProvider reports whether this agent kind understands `--provider`.
+func KindAcceptsProvider(kind string) bool { return providerFlagKinds[kind] }
 
 // PluginID must match the id in herdr-plugin.toml: it locates the same
 // directories Herdr hands the daemon when the CLI is run from a plain shell.
