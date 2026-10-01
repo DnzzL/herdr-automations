@@ -12,6 +12,10 @@ What changed for someone using the plugin. Dates are release dates.
   exits.
 - A daemon that fails to restart on a plugin update keeps its lock, so a second
   scheduler can no longer start beside it and fire everything twice.
+- Runs recover again from Herdr's transient errors: an agent pane whose shell
+  is not ready yet, a prompt that stalls, an agent or workspace that went away.
+  Herdr 0.8.0 and later report errors on stderr, which the plugin did not read,
+  so every wait-and-retry was skipped and the run failed instantly.
 
 ## v0.8.0 — 2026-09-14
 

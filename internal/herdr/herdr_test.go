@@ -22,6 +22,20 @@ func TestNewAPIErrorPrefersHerdrsOwnCode(t *testing.T) {
 	}
 }
 
+func TestNewAPIErrorReadsTheCodeFromStderr(t *testing.T) {
+	// herdr 0.8.0 writes the error envelope to stderr, not stdout.
+	stderr := `{"error":{"code":"agent_pane_busy","message":"agent target pane w3V:p1 is not an available shell"},"id":"cli:agent:start"}` + "\n"
+	err := newAPIError([]string{"agent", "start", "triage"}, nil, stderr, errors.New("exit status 1"))
+
+	if !HasCode(err, CodePaneBusy) {
+		t.Fatalf("code not recovered from %v", err)
+	}
+	want := "agent start: agent_pane_busy: agent target pane w3V:p1 is not an available shell"
+	if err.Error() != want {
+		t.Errorf("got %q, want %q", err.Error(), want)
+	}
+}
+
 func TestNewAPIErrorFallsBackToTheExecError(t *testing.T) {
 	// The failure that made a run undiagnosable: herdr exits non-zero and
 	// prints nothing, so the only thing left to report is why the process died.
