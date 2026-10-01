@@ -95,8 +95,11 @@ func newAPIError(args []string, stdout []byte, stderr string, runErr error) erro
 			Message string `json:"message"`
 		} `json:"error"`
 	}
-	if json.Unmarshal(stdout, &envelope) == nil && envelope.Error.Code != "" {
-		return &APIError{Command: cmd, Code: envelope.Error.Code, Message: envelope.Error.Message}
+	// herdr 0.8.0 prints the error envelope on stderr; older builds used stdout.
+	for _, out := range [][]byte{stdout, []byte(stderr)} {
+		if json.Unmarshal(out, &envelope) == nil && envelope.Error.Code != "" {
+			return &APIError{Command: cmd, Code: envelope.Error.Code, Message: envelope.Error.Message}
+		}
 	}
 	msg := strings.TrimSpace(stderr)
 	if msg == "" {

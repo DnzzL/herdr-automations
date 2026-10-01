@@ -2,6 +2,12 @@
 
 What changed for someone using the plugin. Dates are release dates.
 
+## Unreleased
+
+- A run no longer fails instantly with `agent_pane_busy` when the new pane's
+  shell takes a moment to start. Herdr 0.8.0 reports that error on stderr, which
+  the plugin did not read, so the existing wait-and-retry never kicked in.
+
 ## v0.8.0 — 2026-09-14
 
 - `workspace: existing` with `workspace_id` opens each run in a fresh tab inside
