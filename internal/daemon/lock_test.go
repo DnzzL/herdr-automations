@@ -65,8 +65,10 @@ func TestAcquireLockRejectsSecondDaemonProcess(t *testing.T) {
 	if err != nil {
 		t.Fatalf("run helper: %v (output: %s)", err, out)
 	}
-	if !strings.Contains(out, "REFUSED") {
-		t.Errorf("second daemon was not refused; two daemons would double-fire every automation (helper said: %s)", out)
+	// Refused for the right reason, and pointed at the daemon that holds it.
+	want := fmt.Sprintf("REFUSED: another daemon is already running (pid %d)", os.Getpid())
+	if !strings.Contains(out, want) {
+		t.Errorf("second daemon was not refused by the first one's lock; two daemons would double-fire every automation (want %q, helper said: %s)", want, out)
 	}
 }
 
@@ -106,7 +108,7 @@ func TestLockHelperProcess(t *testing.T) {
 	}
 	release, err := acquireLock()
 	if err != nil {
-		fmt.Println("REFUSED")
+		fmt.Println("REFUSED:", err)
 		return
 	}
 	defer release()

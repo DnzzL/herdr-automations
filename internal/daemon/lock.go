@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -34,7 +35,13 @@ func acquireLock() (release func(), err error) {
 	}
 	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
 		f.Close()
-		return nil, fmt.Errorf("another daemon is already running (pid %s)", holderPID(path))
+		// Only a held lock means a daemon. Reporting any other failure — a
+		// filesystem without flock, say — as one would send someone hunting
+		// for a process that does not exist.
+		if errors.Is(err, syscall.EWOULDBLOCK) {
+			return nil, fmt.Errorf("another daemon is already running (pid %s)", holderPID(path))
+		}
+		return nil, fmt.Errorf("lock %s: %w", path, err)
 	}
 
 	if err := f.Truncate(0); err != nil {
