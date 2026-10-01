@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 )
 
@@ -88,6 +89,38 @@ func TestAcquireLockAfterReleaseSucceeds(t *testing.T) {
 	}
 	if !strings.Contains(out, "ACQUIRED") {
 		t.Errorf("lock was not reusable after release (helper said: %s)", out)
+	}
+}
+
+// A daemon starting just as the running one shuts down can open the pidfile
+// before release and lock it after. If release had removed the file, that
+// daemon would hold a lock on a file nobody else can find, and the next one to
+// start would create a fresh file, lock that too, and run alongside it.
+func TestReleaseKeepsTheFileSoOnlyOneDaemonLocksIt(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HERDR_PLUGIN_STATE_DIR", dir)
+
+	release, err := acquireLock()
+	if err != nil {
+		t.Fatalf("first acquireLock: %v", err)
+	}
+	next, err := os.OpenFile(filepath.Join(dir, "daemon.pid"), os.O_RDWR, 0)
+	if err != nil {
+		t.Fatalf("open pidfile: %v", err)
+	}
+	defer next.Close()
+
+	release()
+	if err := syscall.Flock(int(next.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		t.Fatalf("lock the released pidfile: %v", err)
+	}
+
+	out, err := runLockHelper(dir)
+	if err != nil {
+		t.Fatalf("run helper: %v (output: %s)", err, out)
+	}
+	if !strings.Contains(out, "REFUSED: another daemon is already running") {
+		t.Errorf("a third daemon took a lock while another daemon held one; two would double-fire every automation (helper said: %s)", out)
 	}
 }
 

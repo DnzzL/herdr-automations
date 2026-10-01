@@ -53,8 +53,13 @@ func acquireLock() (release func(), err error) {
 		return nil, err
 	}
 
+	// Empty the file on release rather than remove it. A daemon that opened it
+	// a moment earlier would otherwise lock a file that is no longer there, and
+	// the next one would lock a fresh one beside it. Touching only our own
+	// descriptor also makes a second release harmless, as when restart calls it
+	// again after a failed re-exec.
 	return func() {
-		os.Remove(path)
+		f.Truncate(0)
 		releaseFile(f)
 	}, nil
 }
