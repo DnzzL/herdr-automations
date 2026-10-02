@@ -2,6 +2,15 @@
 
 What changed for someone using the plugin. Dates are release dates.
 
+## Unreleased
+
+- A Herdr server restart can no longer stop every automation. A daemon killed
+  with the server leaves `daemon.pid` behind, and the next one refused to start
+  whenever that PID had since gone to some other process of yours. Herdr doesn't
+  show startup output, so nothing said so. The daemon now locks the file instead
+  of trusting the number in it, and the lock goes with the daemon however it
+  exits.
+
 ## v0.8.0 — 2026-09-14
 
 - `workspace: existing` with `workspace_id` opens each run in a fresh tab inside
