@@ -52,7 +52,7 @@ func Run() error {
 		select {
 		case <-tick.C:
 			if stamp := binaryStamp(); stamp != binary && stamp != "" {
-				restart(release, runs)
+				restart(runs)
 			}
 			evaluate(state, runs, n)
 		case s := <-sigs:
@@ -165,7 +165,10 @@ func recordMissed(name string, count int, why string) {
 
 // restart re-executes the daemon so a plugin upgrade takes effect without
 // waiting for the Herdr server to be restarted.
-func restart(release func(), runs *runner.Runner) {
+// execve is syscall.Exec, swappable so a test can make the re-exec fail.
+var execve = syscall.Exec
+
+func restart(runs *runner.Runner) {
 	if runs.Busy() {
 		return // let the in-flight run finish; we'll notice again next tick
 	}
@@ -175,8 +178,9 @@ func restart(release func(), runs *runner.Runner) {
 		return
 	}
 	log.Printf("binary changed, re-executing %s", exe)
-	release() // the new process takes the lock
-	if err := syscall.Exec(exe, os.Args, os.Environ()); err != nil {
+	// No release here: the lock's descriptor is close-on-exec, so a successful
+	// exec drops it for the new image, and a failed one leaves it held.
+	if err := execve(exe, os.Args, os.Environ()); err != nil {
 		log.Printf("re-exec failed, continuing with the old build: %v", err)
 	}
 }
