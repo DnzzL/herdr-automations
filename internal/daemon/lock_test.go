@@ -9,6 +9,8 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+
+	"github.com/DnzzL/herdr-automations/internal/runner"
 )
 
 // A daemon killed with the Herdr server leaves its pidfile behind, and the
@@ -146,4 +148,29 @@ func TestLockHelperProcess(t *testing.T) {
 	}
 	defer release()
 	fmt.Println("ACQUIRED")
+}
+
+// A re-exec that fails leaves the old daemon running, so it must still hold
+// the lock; otherwise the next startup hook would launch a second scheduler.
+func TestFailedReExecKeepsTheLock(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HERDR_PLUGIN_STATE_DIR", dir)
+
+	release, err := acquireLock()
+	if err != nil {
+		t.Fatalf("acquireLock: %v", err)
+	}
+	defer release()
+
+	defer func(orig func(string, []string, []string) error) { execve = orig }(execve)
+	execve = func(string, []string, []string) error { return syscall.ENOEXEC }
+	restart(runner.New(nil))
+
+	out, err := runLockHelper(dir)
+	if err != nil {
+		t.Fatalf("run helper: %v (output: %s)", err, out)
+	}
+	if !strings.Contains(out, "REFUSED: another daemon is already running") {
+		t.Errorf("a failed re-exec dropped the lock; a second daemon could start beside the old one (helper said: %s)", out)
+	}
 }

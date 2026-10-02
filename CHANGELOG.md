@@ -10,6 +10,8 @@ What changed for someone using the plugin. Dates are release dates.
   show startup output, so nothing said so. The daemon now locks the file instead
   of trusting the number in it, and the lock goes with the daemon however it
   exits.
+- A daemon that fails to restart on a plugin update keeps its lock, so a second
+  scheduler can no longer start beside it and fire everything twice.
 
 ## v0.8.0 — 2026-09-14
 
