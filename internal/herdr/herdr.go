@@ -89,14 +89,14 @@ func HasCode(err error, code string) bool {
 // was never on PATH.
 func newAPIError(args []string, stdout []byte, stderr string, runErr error) error {
 	cmd := strings.Join(args[:min(2, len(args))], " ")
-	var envelope struct {
-		Error struct {
-			Code    string `json:"code"`
-			Message string `json:"message"`
-		} `json:"error"`
-	}
-	// herdr 0.8.0 prints the error envelope on stderr; older builds used stdout.
+	// herdr ≥ 0.8.0 prints the error envelope on stderr; older builds used stdout.
 	for _, out := range [][]byte{stdout, []byte(stderr)} {
+		var envelope struct {
+			Error struct {
+				Code    string `json:"code"`
+				Message string `json:"message"`
+			} `json:"error"`
+		}
 		if json.Unmarshal(out, &envelope) == nil && envelope.Error.Code != "" {
 			return &APIError{Command: cmd, Code: envelope.Error.Code, Message: envelope.Error.Message}
 		}
