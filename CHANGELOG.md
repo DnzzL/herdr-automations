@@ -2,7 +2,7 @@
 
 What changed for someone using the plugin. Dates are release dates.
 
-## Unreleased
+## v0.8.1 — 2026-10-07
 
 - A Herdr server restart can no longer stop every automation. A daemon killed
   with the server leaves `daemon.pid` behind, and the next one refused to start
