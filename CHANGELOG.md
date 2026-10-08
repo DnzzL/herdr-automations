@@ -2,6 +2,13 @@
 
 What changed for someone using the plugin. Dates are release dates.
 
+## v0.8.2 — 2026-10-08
+
+- Updating the plugin with `herdr plugin install` takes effect again without a
+  Herdr server restart. The installer moves the old checkout away and deletes
+  it, and the daemon was watching that deleted copy, so it never noticed the new
+  build. It now watches the path it started from.
+
 ## v0.8.1 — 2026-10-07
 
 - A Herdr server restart can no longer stop every automation. A daemon killed
