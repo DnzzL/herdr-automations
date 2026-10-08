@@ -164,7 +164,7 @@ func TestFailedReExecKeepsTheLock(t *testing.T) {
 
 	defer func(orig func(string, []string, []string) error) { execve = orig }(execve)
 	execve = func(string, []string, []string) error { return syscall.ENOEXEC }
-	restart(runner.New(nil))
+	restart(runner.New(nil), "")
 
 	out, err := runLockHelper(dir)
 	if err != nil {
@@ -172,5 +172,43 @@ func TestFailedReExecKeepsTheLock(t *testing.T) {
 	}
 	if !strings.Contains(out, "REFUSED: another daemon is already running") {
 		t.Errorf("a failed re-exec dropped the lock; a second daemon could start beside the old one (helper said: %s)", out)
+	}
+}
+
+// `herdr plugin install` moves the old checkout away and deletes it, so the
+// running image's own path stops existing; the new build lands at the path the
+// daemon started from, and that is the one to watch and re-exec.
+func TestReinstallReExecsTheBinaryAtTheStartupPath(t *testing.T) {
+	root := t.TempDir()
+	exe := filepath.Join(root, "checkout", "bin", "herdr-automations")
+	if err := os.MkdirAll(filepath.Dir(exe), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(exe, []byte("old build"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	before := binaryStamp(exe)
+
+	if err := os.Rename(filepath.Join(root, "checkout"), filepath.Join(root, "previous-checkout")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(exe), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(exe, []byte("new build, bigger"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	after := binaryStamp(exe)
+	if after == "" || after == before {
+		t.Fatalf("reinstall went unnoticed: stamp %q -> %q", before, after)
+	}
+
+	defer func(orig func(string, []string, []string) error) { execve = orig }(execve)
+	var execd string
+	execve = func(path string, _ []string, _ []string) error { execd = path; return nil }
+	restart(runner.New(nil), exe)
+	if execd != exe {
+		t.Errorf("re-exec targeted %q, want the startup path %q", execd, exe)
 	}
 }

@@ -37,7 +37,13 @@ func Run() error {
 
 	log.Printf("daemon starting, config=%s", config.Path())
 	state := loadState()
-	binary := binaryStamp()
+	// Resolve the path once: a reinstall moves the running image away, but the
+	// new build lands here.
+	exe, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	binary := binaryStamp(exe)
 	n := notify.New()
 	runs := runner.NewWith(host.New(), n)
 
@@ -51,8 +57,8 @@ func Run() error {
 	for {
 		select {
 		case <-tick.C:
-			if stamp := binaryStamp(); stamp != binary && stamp != "" {
-				restart(runs)
+			if stamp := binaryStamp(exe); stamp != binary && stamp != "" {
+				restart(runs, exe)
 			}
 			evaluate(state, runs, n)
 		case s := <-sigs:
@@ -168,14 +174,9 @@ func recordMissed(name string, count int, why string) {
 // execve is syscall.Exec, swappable so a test can make the re-exec fail.
 var execve = syscall.Exec
 
-func restart(runs *runner.Runner) {
+func restart(runs *runner.Runner, exe string) {
 	if runs.Busy() {
 		return // let the in-flight run finish; we'll notice again next tick
-	}
-	exe, err := os.Executable()
-	if err != nil {
-		log.Printf("cannot locate the new binary: %v", err)
-		return
 	}
 	log.Printf("binary changed, re-executing %s", exe)
 	// No release here: the lock's descriptor is close-on-exec, so a successful
@@ -185,11 +186,7 @@ func restart(runs *runner.Runner) {
 	}
 }
 
-func binaryStamp() string {
-	exe, err := os.Executable()
-	if err != nil {
-		return ""
-	}
+func binaryStamp(exe string) string {
 	st, err := os.Stat(exe)
 	if err != nil {
 		return ""
