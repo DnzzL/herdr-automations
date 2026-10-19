@@ -2,7 +2,7 @@
 
 What changed for someone using the plugin. Dates are release dates.
 
-## Unreleased
+## v0.9.0 — 2026-10-19
 
 - `session: <name>` sends an automation's runs to that Herdr session, whether
   they come from the cron, `r` on the board, or `run`. Keep a dedicated session
