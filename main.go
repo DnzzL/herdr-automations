@@ -3,6 +3,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -11,6 +12,7 @@ import (
 	"github.com/DnzzL/herdr-automations/internal/cleanup"
 	"github.com/DnzzL/herdr-automations/internal/config"
 	"github.com/DnzzL/herdr-automations/internal/daemon"
+	"github.com/DnzzL/herdr-automations/internal/herdr"
 	"github.com/DnzzL/herdr-automations/internal/history"
 	"github.com/DnzzL/herdr-automations/internal/pane"
 	"github.com/DnzzL/herdr-automations/internal/runner"
@@ -50,6 +52,11 @@ func main() {
 	switch os.Args[1] {
 	case "daemon":
 		err = daemon.Run()
+		if errors.Is(err, daemon.ErrAlreadyRunning) {
+			// Not a failure: one daemon serves every session (ADR 0010).
+			fmt.Println("daemon not started:", err)
+			return
+		}
 	case "add":
 		err = wizard.Run()
 	case "list":
@@ -122,6 +129,7 @@ func list() error {
 			name, a.Cron, a.Workspace, a.Agent, model, last)
 	}
 	printDiagnostics(cfg)
+	printStoppedSessions(cfg)
 	printCollisions(cfg)
 	printWorktrees(cfg)
 	return nil
@@ -141,6 +149,26 @@ func printDiagnostics(cfg *config.Config) {
 	fmt.Printf("\n%s did not load and will not run:\n", subject)
 	for _, d := range cfg.Invalid {
 		fmt.Printf("  %s\n", d)
+	}
+}
+
+// printStoppedSessions names the automations aimed at a Herdr session that is
+// not running. Their runs will fail, and the plugin never starts a session —
+// so this is the moment to find out, not 09:00.
+func printStoppedSessions(cfg *config.Config) {
+	running, err := herdr.Client{}.RunningSessions()
+	if err != nil {
+		return
+	}
+	up := map[string]bool{}
+	for _, s := range running {
+		up[s] = true
+	}
+	for _, a := range cfg.Automations {
+		if a.Session != "" && !a.Disabled && !up[a.Session] {
+			fmt.Printf("\n%s runs in session %q, which is not running — start it, or its runs will fail\n",
+				a.Name, a.Session)
+		}
 	}
 }
 

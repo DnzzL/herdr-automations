@@ -5,6 +5,9 @@ automations:
     cron: "0 9 * * 1-5"
     repo: ~/Projects/myapp
     workspace: worktree
+    # Optional: provision every run in this Herdr session, kept apart from the
+    # ones you work in. It must be running; the plugin never starts it.
+    session: automations
     agent: claude
     # Passed to the agent as --model. Leave it out and the agent picks for
     # itself — which is how an unattended chore lands on a flagship model.

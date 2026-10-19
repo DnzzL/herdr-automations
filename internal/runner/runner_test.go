@@ -306,3 +306,16 @@ func TestStatusForSeparatesACancellationFromAFailure(t *testing.T) {
 		t.Errorf("a real failure recorded as %q, want failed", got)
 	}
 }
+
+func TestHistoryRemembersWhichSessionARunLivesIn(t *testing.T) {
+	t.Setenv("HERDR_PLUGIN_STATE_DIR", t.TempDir())
+	h := &fakeHost{provision: func(config.Automation) (host.Session, error) {
+		return host.Session{WorkspaceID: "w1", PaneID: "w1:p1", HerdrSession: "automations"}, nil
+	}}
+	if err := New(h).Run(config.Automation{Name: "triage"}, history.TriggerManual); err != nil {
+		t.Fatal(err)
+	}
+	if got := runs(t)[0].Session; got != "automations" {
+		t.Fatalf("session = %q, want automations: the board cannot find w1 without it", got)
+	}
+}

@@ -3,6 +3,7 @@
 package notify
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"strings"
@@ -30,8 +31,41 @@ type Notifier struct {
 	complained sync.Once
 }
 
-// New returns a Notifier that toasts through the real Herdr.
-func New() *Notifier { return &Notifier{sink: herdr.Client{}} }
+// New returns a Notifier that toasts through the real Herdr, in every running
+// session.
+func New() *Notifier {
+	return &Notifier{sink: everywhere{
+		list: herdr.Client{}.RunningSessions,
+		show: func(session, title, body string, sound herdr.Sound) error {
+			return herdr.Client{Session: session}.NotificationShow(title, body, sound)
+		},
+	}}
+}
+
+// everywhere toasts in every running Herdr session. A toast lands only in the
+// session it is sent to, and the session a run happens in — a dedicated one,
+// say — is often the one nobody is looking at (ADR 0010).
+type everywhere struct {
+	list func() ([]string, error)
+	// show toasts in one session; "" means wherever the environment points.
+	show func(session, title, body string, sound herdr.Sound) error
+}
+
+func (e everywhere) NotificationShow(title, body string, sound herdr.Sound) error {
+	sessions, err := e.list()
+	if err != nil || len(sessions) == 0 {
+		// One toast somewhere beats none: a herdr that cannot list sessions
+		// can still show one where it always did.
+		return e.show("", title, body, sound)
+	}
+	var errs []error
+	for _, s := range sessions {
+		if err := e.show(s, title, body, sound); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	return errors.Join(errs...)
+}
 
 // With returns a Notifier that toasts through sink — the tests' seam.
 func With(s Sink) *Notifier { return &Notifier{sink: s} }

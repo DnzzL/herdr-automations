@@ -25,6 +25,11 @@ type ops interface {
 	PaneRun(paneID string, command ...string) error
 	PaneRead(paneID string, lines int) (string, error)
 
+	// In returns the same calls aimed at a named Herdr session.
+	In(session string) ops
+	// CurrentSession names the session these calls land in; empty if unknown.
+	CurrentSession() string
+
 	// HasCode reports whether err is a Herdr API error with the given code.
 	// It travels with the ops so a fake can answer for its own errors.
 	HasCode(err error, code string) bool
@@ -36,6 +41,10 @@ type ops interface {
 // client; the two that are not Herdr's business are here.
 type herdrOps struct {
 	herdr.Client
+}
+
+func (o herdrOps) In(session string) ops {
+	return herdrOps{herdr.Client{Session: session}}
 }
 
 func (herdrOps) HasCode(err error, code string) bool { return herdr.HasCode(err, code) }

@@ -167,6 +167,7 @@ automations:
     cron: "0 9 * * 1-5"           # 5-field crontab, or @daily / @hourly / @weekly
     repo: ~/Projects/myapp
     workspace: worktree           # worktree (default) | root | existing
+    session: automations          # optional Herdr session the run happens in
     agent: claude                 # any `herdr agent start --kind`
     model: sonnet                 # optional → --model; kinds without the flag are caught on load
     prompt: "…"                   # OR workflow: <name>  (delegates to hwf run)
@@ -201,10 +202,37 @@ remain open for review; each run gets a distinct agent name.
 
 Like `root`, this mode works directly in `repo` and creates no Git worktree. Runs
 sharing a directory can see each other's file changes. `workspace_id` is required
-only for `existing` mode and belongs to the Herdr session running the daemon. If
+only for `existing` mode and belongs to the automation's Herdr session. If
 you close that workspace, runs fail until you update the ID; the plugin does not
 create a replacement — see [ADR 0009](docs/adr/0009-a-run-may-share-a-workspace.md).
 The `add` wizard also offers this mode.
+
+### Run in a dedicated Herdr session
+
+Keep cron runs out of the sessions you work in by naming one:
+
+```yaml
+automations:
+  - name: issue-triage
+    cron: "0 9 * * 1-5"
+    repo: ~/Projects/myapp
+    session: automations
+    prompt: "Triage new GitHub issues."
+```
+
+Every run of that automation, from the cron, `r` on the board, or `run`, is
+provisioned in `automations`. Without `session:`, a run lands where it is
+triggered from: the board's or shell's session, or for the cron, the session
+that started the daemon. The plugin never starts a session. Start it yourself
+(`herdr --session automations server` runs it headless), and a run aimed at a
+stopped one fails with Herdr's own error. `list` names the automations whose
+session is not running.
+
+One scheduler serves every session on the machine. It outlives the session that
+started it and stops once no session is running. Failure toasts appear in every
+running session, so a dedicated one cannot swallow them. `enter` on the board
+jumps only within its own session. For a run elsewhere, it tells you which
+session to attach — see [ADR 0010](docs/adr/0010-the-daemon-belongs-to-no-session.md).
 
 ## What this does to your machine
 
@@ -216,7 +244,7 @@ agent's own posture is Herdr's to describe.
 - **Writes to two places** — the plugin config dir (`herdr plugin config-dir dnzzl.automations`) and `~/.local/state/herdr/plugins/dnzzl.automations` for the run log. Nothing else on disk is touched by the plugin itself
 - **Creates git worktrees and branches** in the repos you name, `auto/<name>-<timestamp>`. It never removes one on its own — `herdr-automations cleanup` is the only thing that deletes, it asks first, and it only touches `auto/` branches already contained in your default branch
 - **Opens no ports**, phones nothing home, and downloads nothing at runtime — the only network access is `herdr plugin install` fetching a checksum-verified release binary
-- **Raises a Herdr toast** on a failed run, a missed run, or a broken `automations.yaml` entry — in-session only: a panel inside the Herdr window, not an OS notification, and not sent anywhere
+- **Raises a Herdr toast** on a failed run, a missed run, or a broken `automations.yaml` entry — in every running Herdr session: a panel inside the Herdr window, not an OS notification, and not sent anywhere
 - **`herdr plugin uninstall`** removes the plugin and leaves your config and history where they are
 
 ## FAQ

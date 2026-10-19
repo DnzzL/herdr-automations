@@ -69,6 +69,9 @@ type Automation struct {
 	// CatchUpMinutes is how late a missed occurrence may still run — the
 	// laptop-was-asleep case. 0 uses the default (120); -1 never catches up.
 	CatchUpMinutes int `yaml:"catch_up_minutes,omitempty"`
+	// Session is the Herdr session the run happens in, whoever triggers it.
+	// Empty means the session of the process running it (ADR 0010).
+	Session string `yaml:"session,omitempty"`
 	// Disabled keeps the entry in the file but out of the scheduler.
 	Disabled bool `yaml:"disabled,omitempty"`
 
@@ -153,6 +156,11 @@ func (a *Automation) validate() error {
 	}
 	if a.Workspace != WorkspaceExisting && a.WorkspaceID != "" {
 		return fmt.Errorf("%s: workspace_id requires existing mode", a.Name)
+	}
+	// The name becomes a directory under Herdr's config dir; whether that
+	// session is running is a 3am fact, not a load-time one.
+	if a.Session != "" && (strings.ContainsAny(a.Session, "/\\ \t\n") || strings.HasPrefix(a.Session, ".")) {
+		return fmt.Errorf("%s: session %q is not a Herdr session name", a.Name, a.Session)
 	}
 	if a.Model != "" && !KindAcceptsModel(a.Agent) {
 		return fmt.Errorf("%s: agent %q takes no --model; put the flag it does take in agent_args", a.Name, a.Agent)
