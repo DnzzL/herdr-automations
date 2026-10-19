@@ -64,7 +64,7 @@ func (r *Runner) Run(a config.Automation, trigger history.Trigger) error {
 	session, err := r.host.Provision(a)
 	if err != nil {
 		r.record(id, a.Name, trigger, history.StatusFailed,
-			host.Session{WorkspaceID: session.WorkspaceID}, err.Error())
+			host.Session{WorkspaceID: session.WorkspaceID, HerdrSession: session.HerdrSession}, err.Error())
 		return err
 	}
 	r.record(id, a.Name, trigger, history.StatusRunning, session, "")
@@ -93,7 +93,7 @@ func statusFor(err error) history.Status {
 func (r *Runner) record(id, name string, trigger history.Trigger, st history.Status, s host.Session, errMsg string) {
 	err := history.Append(history.Record{
 		RunID: id, Automation: name, Trigger: trigger, Status: st, At: time.Now(),
-		WorkspaceID: s.WorkspaceID, PaneID: s.PaneID, Error: errMsg,
+		Session: s.HerdrSession, WorkspaceID: s.WorkspaceID, PaneID: s.PaneID, Error: errMsg,
 	})
 	if err != nil {
 		log.Printf("history append failed: %v", err)

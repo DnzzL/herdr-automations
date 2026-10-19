@@ -161,3 +161,33 @@ func TestANilNotifierIsSilent(t *testing.T) {
 	n.Outcome("triage", history.StatusFailed, "boom")
 	n.Tick([]string{"triage"}, []string{"broken"})
 }
+
+func TestAToastReachesEverySessionThatIsRunning(t *testing.T) {
+	var shownIn []string
+	e := everywhere{
+		list: func() ([]string, error) { return []string{"default", "automations"}, nil },
+		show: func(session, _, _ string, _ herdr.Sound) error {
+			shownIn = append(shownIn, session)
+			return nil
+		},
+	}
+	With(e).Outcome("triage", history.StatusFailed, "boom")
+	if fmt.Sprint(shownIn) != "[default automations]" {
+		t.Fatalf("toasted in %q, want every running session: a dedicated one is where nobody looks", shownIn)
+	}
+}
+
+func TestAToastStillGoesSomewhereWhenSessionsCannotBeListed(t *testing.T) {
+	var shownIn []string
+	e := everywhere{
+		list: func() ([]string, error) { return nil, errors.New("herdr too old") },
+		show: func(session, _, _ string, _ herdr.Sound) error {
+			shownIn = append(shownIn, session)
+			return nil
+		},
+	}
+	With(e).Outcome("triage", history.StatusFailed, "boom")
+	if len(shownIn) != 1 || shownIn[0] != "" {
+		t.Fatalf("toasted in %q, want one toast wherever the environment points", shownIn)
+	}
+}

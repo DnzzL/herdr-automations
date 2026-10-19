@@ -147,3 +147,23 @@ func TestReportInvalidToastsOncePerBrokenEntryAcrossTicks(t *testing.T) {
 		t.Fatalf("toasts = %d, want the second tick to stay quiet about the same unfixed entry", sink.toasts)
 	}
 }
+
+func TestTheDaemonStopsOnlyOnceNoSessionIsLeft(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		sessions []string
+		err      error
+		want     bool
+	}{
+		{"its own session stopped, another runs", []string{"alt"}, nil, false},
+		{"nothing runs", nil, nil, true},
+		// Herdr unreachable is not Herdr gone: an orphan beats a machine
+		// without a scheduler.
+		{"cannot tell", nil, os.ErrNotExist, false},
+	} {
+		got := noSessionLeft(func() ([]string, error) { return tc.sessions, tc.err })
+		if got != tc.want {
+			t.Errorf("%s: noSessionLeft = %v, want %v", tc.name, got, tc.want)
+		}
+	}
+}

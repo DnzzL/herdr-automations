@@ -26,6 +26,11 @@ type fakeOps struct {
 	paneRead        func(paneID string, lines int) (string, error)
 	lookPath        func(file string) error
 
+	// session is what In bound the fake to, read by a test at call time to
+	// see which session a call was made in. current answers CurrentSession.
+	session string
+	current string
+
 	starts  int
 	submits int
 	pending int
@@ -113,6 +118,18 @@ func (f *fakeOps) LookPath(file string) error {
 		return nil
 	}
 	return f.lookPath(file)
+}
+
+func (f *fakeOps) In(session string) ops {
+	f.session = session
+	return f
+}
+
+func (f *fakeOps) CurrentSession() string {
+	if f.session != "" {
+		return f.session
+	}
+	return f.current
 }
 
 // HasCode is the real thing: the fakes return real *herdr.APIError values, so
@@ -311,5 +328,47 @@ func TestAgentNameIsTheAutomationsOutsideExistingMode(t *testing.T) {
 		if got := agentNameFor(a, "w7:p1"); got != "inbox" {
 			t.Errorf("agentNameFor(%s) = %q, want %q", mode, got, "inbox")
 		}
+	}
+}
+
+func TestARunNamingASessionIsProvisionedAndWorkedThere(t *testing.T) {
+	ops := &fakeOps{current: "default"}
+	var provisionedIn, startedIn string
+	ops.worktreeCreate = func(string, string, string) (string, string, error) {
+		provisionedIn = ops.session
+		return "w7", "w7:p1", nil
+	}
+	ops.agentStart = func(string, string, string, []string) error {
+		startedIn = ops.session
+		return nil
+	}
+	h := &live{ops: ops, knobs: fast()}
+	a := config.Automation{Name: "n", Repo: "/r", Workspace: config.WorkspaceWorktree,
+		Prompt: "p", Session: "automations"}
+
+	s, err := h.Provision(a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if provisionedIn != "automations" || s.HerdrSession != "automations" {
+		t.Fatalf("provisioned in %q, session = %+v; want automations", provisionedIn, s)
+	}
+	if err := h.Do(s, a, time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	if startedIn != "automations" {
+		t.Fatalf("agent started in %q, want automations", startedIn)
+	}
+}
+
+func TestARunNamingNoSessionHappensWhereItWasTriggered(t *testing.T) {
+	ops := &fakeOps{current: "alt"}
+	h := &live{ops: ops, knobs: fast()}
+	s, err := h.Provision(config.Automation{Name: "n", Repo: "/r", Workspace: config.WorkspaceRoot})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ops.session != "" || s.HerdrSession != "alt" {
+		t.Fatalf("bound to %q, session = %+v; want unbound, recorded as alt", ops.session, s)
 	}
 }

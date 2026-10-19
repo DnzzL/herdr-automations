@@ -302,3 +302,34 @@ func TestExistingWorkspaceSurvivesConfigRoundTrip(t *testing.T) {
 		t.Fatalf("existing workspace was lost on save: %+v", a)
 	}
 }
+
+func TestSessionNamesWhereTheRunHappens(t *testing.T) {
+	withConfig(t, `
+automations:
+  - {name: triage, cron: "@daily", repo: /x, prompt: p, session: automations}
+  - {name: here, cron: "@daily", repo: /x, prompt: p}
+`)
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := cfg.Find("triage").Session; got != "automations" {
+		t.Errorf("session = %q, want automations", got)
+	}
+	if got := cfg.Find("here").Session; got != "" {
+		t.Errorf("session = %q, want empty: no key keeps today's behaviour", got)
+	}
+}
+
+func TestASessionNameHerdrCouldNotResolveIsRefusedAtLoad(t *testing.T) {
+	for _, bad := range []string{`"my session"`, `"../default"`, `" automations"`} {
+		withConfig(t, "automations:\n  - {name: t, cron: \"@daily\", repo: /x, prompt: p, session: "+bad+"}\n")
+		cfg, err := Load()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(cfg.Invalid) != 1 || !strings.Contains(cfg.Invalid[0].Message, "session") {
+			t.Errorf("session %s: invalid = %+v, want one diagnostic about the session", bad, cfg.Invalid)
+		}
+	}
+}

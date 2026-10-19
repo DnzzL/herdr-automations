@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/DnzzL/herdr-automations/internal/config"
+	"github.com/DnzzL/herdr-automations/internal/herdr"
 	"github.com/DnzzL/herdr-automations/internal/history"
 	"github.com/DnzzL/herdr-automations/internal/host"
 	"github.com/DnzzL/herdr-automations/internal/notify"
@@ -57,6 +58,11 @@ func Run() error {
 	for {
 		select {
 		case <-tick.C:
+			// A run in flight records how it ended first, as in restart.
+			if !runs.Busy() && noSessionLeft(herdr.Client{}.RunningSessions) {
+				log.Printf("no Herdr session is running, shutting down")
+				return nil
+			}
 			if stamp := binaryStamp(exe); stamp != binary && stamp != "" {
 				restart(runs, exe)
 			}
@@ -66,6 +72,17 @@ func Run() error {
 			return nil
 		}
 	}
+}
+
+// noSessionLeft decides when the daemon is done. It outlives the session that
+// started it — every run names its own, and a session already up never re-runs
+// its startup hook, so dying with the first would leave the others without a
+// scheduler. With no session at all there is nothing left to run in, and the
+// next one to start brings a fresh daemon. A Herdr that cannot answer is not
+// one that is gone.
+func noSessionLeft(list func() ([]string, error)) bool {
+	sessions, err := list()
+	return err == nil && len(sessions) == 0
 }
 
 // evaluate asks the schedule what should happen now, and does it.

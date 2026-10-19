@@ -23,6 +23,11 @@ import (
 // process, which looks exactly like a running daemon. The PID is still written,
 // for humans reading the file and for the error below, but never decides
 // whether a daemon is live.
+// ErrAlreadyRunning is the expected answer for every startup hook but the
+// first: each Herdr session starts the daemon, and one per machine serves them
+// all (ADR 0010).
+var ErrAlreadyRunning = errors.New("another daemon is already running")
+
 func acquireLock() (release func(), err error) {
 	if err := os.MkdirAll(config.StateDir(), 0o755); err != nil {
 		return nil, err
@@ -39,7 +44,7 @@ func acquireLock() (release func(), err error) {
 		// filesystem without flock, say — as one would send someone hunting
 		// for a process that does not exist.
 		if errors.Is(err, syscall.EWOULDBLOCK) {
-			return nil, fmt.Errorf("another daemon is already running (pid %s)", holderPID(path))
+			return nil, fmt.Errorf("%w (pid %s)", ErrAlreadyRunning, holderPID(path))
 		}
 		return nil, fmt.Errorf("lock %s: %w", path, err)
 	}

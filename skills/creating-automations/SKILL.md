@@ -29,6 +29,7 @@ automations:
     repo: ~/Projects/myapp        # repo the agent works in
     workspace: worktree           # worktree (default, fresh branch per run) | root | existing
     # workspace_id: w7           # required by, and only by, workspace: existing
+    # session: automations       # optional Herdr session every run happens in
     agent: claude                 # any kind `herdr agent start` supports
     model: sonnet                 # optional → passed as --model
     prompt: |
@@ -77,6 +78,10 @@ Exactly one of `prompt` / `workflow` is required.
   no worktree. Propose it for a frequent schedule — hourly and up — where a
   workspace per run would bury the sidebar. Never invent the ID: if the user has
   not given one, ask, or write the entry with `worktree`.
+- `session:` names the Herdr session runs happen in, whether triggered by cron
+  or by hand. Add it only when the user asks for runs to land in a specific or
+  dedicated session; `herdr session list` shows the names. The session must be
+  running: the plugin never starts one, and a run aimed at a stopped one fails.
 - A failed run, a missed run, or a broken entry raises a Herdr toast; a
   successful or skipped run stays quiet on purpose. There is no event, push, or
   PR trigger and none is planned — if the user asks for one, propose a cron

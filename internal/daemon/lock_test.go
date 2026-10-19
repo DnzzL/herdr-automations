@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -210,5 +211,19 @@ func TestReinstallReExecsTheBinaryAtTheStartupPath(t *testing.T) {
 	restart(runner.New(nil), exe)
 	if execd != exe {
 		t.Errorf("re-exec targeted %q, want the startup path %q", execd, exe)
+	}
+}
+
+func TestASecondDaemonIsToldItIsNotNeeded(t *testing.T) {
+	// Every session's startup hook starts a daemon and all but one lose. That
+	// is the design, so the losers must not read as failures in plugin log.
+	t.Setenv("HERDR_PLUGIN_STATE_DIR", t.TempDir())
+	release, err := acquireLock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
+	if _, err := acquireLock(); !errors.Is(err, ErrAlreadyRunning) {
+		t.Fatalf("err = %v, want ErrAlreadyRunning", err)
 	}
 }

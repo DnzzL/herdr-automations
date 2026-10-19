@@ -101,7 +101,11 @@ func (r row) schedule() string {
 type model struct {
 	// runs is the board's Runner: `r` runs an automation through the same
 	// lifecycle the daemon uses, in-flight set included.
-	runs        *runner.Runner
+	runs *runner.Runner
+	// here is the Herdr session the board runs in. A run's workspace can only
+	// be focused from its own session; empty means unknown, and then the board
+	// tries anyway, as it did before runs recorded where they live.
+	here        string
 	rows        []row
 	cursor      int
 	width       int
@@ -164,6 +168,7 @@ func togglePause(name string) tea.Msg {
 func Run() error {
 	m := load()
 	m.runs = runner.Default()
+	m.here = herdr.Client{}.CurrentSession()
 	_, err := tea.NewProgram(m, tea.WithAltScreen()).Run()
 	return err
 }
@@ -205,7 +210,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case refreshMsg:
 		next := load()
-		next.runs = m.runs
+		next.runs, next.here = m.runs, m.here
 		if next.cursor = m.cursor; next.cursor >= len(next.rows) {
 			next.cursor = max(0, len(next.rows)-1)
 		}
@@ -217,7 +222,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return next, tick()
 	case editedMsg:
 		next := load() // pick up whatever was just saved, including new entries
-		next.runs = m.runs
+		next.runs, next.here = m.runs, m.here
 		next.cursor = min(m.cursor, max(0, len(next.rows)-1))
 		if msg.err != nil {
 			next.setNotice(failStyle, msg.err.Error())
@@ -331,6 +336,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				last := m.rows[m.cursor].last
 				if last == nil || last.WorkspaceID == "" {
 					m.setNotice(dimStyle, "no run to jump to yet")
+					return m, nil
+				}
+				// Herdr cannot move an attached client to another session,
+				// and asking this one for that workspace would say "not found".
+				if last.Session != "" && m.here != "" && last.Session != m.here {
+					m.setNotice(dimStyle, "that run lives in session "+last.Session+
+						" — herdr session attach "+last.Session)
 					return m, nil
 				}
 				if err := (herdr.Client{}).Focus(last.WorkspaceID, last.PaneID); err != nil {

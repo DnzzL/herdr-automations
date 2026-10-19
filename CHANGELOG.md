@@ -2,6 +2,24 @@
 
 What changed for someone using the plugin. Dates are release dates.
 
+## Unreleased
+
+- `session: <name>` sends an automation's runs to that Herdr session, whether
+  they come from the cron, `r` on the board, or `run`. Keep a dedicated session
+  for automations, out of the ones you work in. Without the key, nothing
+  changes. A run aimed at a stopped session fails with Herdr's error, and
+  `list` names the automations whose session is not running.
+- Stopping the Herdr session that started the daemon no longer leaves a
+  scheduler behind that fails every run while blocking other sessions from
+  starting a new one. The daemon now serves every session and stops once none
+  is running.
+- Other sessions' startup hooks no longer show up as `failed` in
+  `herdr plugin log`: one daemon per machine is expected, and they now exit
+  cleanly and say which one is serving.
+- Failure toasts appear in every running Herdr session, not only the daemon's.
+- `enter` on the board no longer says a run's workspace "was closed" when it is
+  open in another session. It says which session to attach.
+
 ## v0.8.2 — 2026-10-08
 
 - Updating the plugin with `herdr plugin install` takes effect again without a

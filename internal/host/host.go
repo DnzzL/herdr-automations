@@ -26,6 +26,9 @@ import (
 type Session struct {
 	WorkspaceID string
 	PaneID      string
+	// HerdrSession is the Herdr session both IDs belong to. Not to be confused
+	// with Session itself, which predates Herdr having sessions.
+	HerdrSession string
 }
 
 // Host provisions somewhere for a run to happen, and does the work there.
@@ -83,8 +86,17 @@ func defaultKnobs() knobs {
 	}
 }
 
+// in aims the host at the automation's Herdr session, if it names one.
+func (h *live) in(a config.Automation) *live {
+	if a.Session == "" {
+		return h
+	}
+	return &live{ops: h.ops.In(a.Session), knobs: h.knobs}
+}
+
 // Provision opens the workspace the automation asked for.
 func (h *live) Provision(a config.Automation) (Session, error) {
+	h = h.in(a)
 	label := "auto: " + a.Name
 	var workspaceID, paneID string
 	var err error
@@ -100,12 +112,12 @@ func (h *live) Provision(a config.Automation) (Session, error) {
 	default:
 		err = fmt.Errorf("unknown workspace mode %q", a.Workspace)
 	}
-	return Session{WorkspaceID: workspaceID, PaneID: paneID}, err
+	return Session{WorkspaceID: workspaceID, PaneID: paneID, HerdrSession: h.ops.CurrentSession()}, err
 }
 
 // Do runs the automation's work in the session and reports whether it worked.
 func (h *live) Do(s Session, a config.Automation, timeout time.Duration) error {
-	return h.workFor(a).do(s, timeout)
+	return h.in(a).workFor(a).do(s, timeout)
 }
 
 // work is one way of getting an automation's work done in a session. Two
