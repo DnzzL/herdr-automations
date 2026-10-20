@@ -4,3 +4,5 @@ scripts/demo/*.cast
 scripts/demo/wizcfg/
 scripts/demo/wframes/
 scripts/demo/frames/
+.devenv*
+devenv.local.nix
