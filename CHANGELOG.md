@@ -2,6 +2,12 @@
 
 What changed for someone using the plugin. Dates are release dates.
 
+## Unreleased
+
+- `install-skill` is gone. Install the agent skill with
+  `npx skills add DnzzL/herdr-automations`, which reaches Codex, OpenCode and
+  other agents, not only Claude Code.
+
 ## v0.9.0 — 2026-10-19
 
 - `session: <name>` sends an automation's runs to that Herdr session, whether

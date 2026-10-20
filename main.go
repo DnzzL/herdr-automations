@@ -17,7 +17,6 @@ import (
 	"github.com/DnzzL/herdr-automations/internal/pane"
 	"github.com/DnzzL/herdr-automations/internal/runner"
 	"github.com/DnzzL/herdr-automations/internal/schedule"
-	"github.com/DnzzL/herdr-automations/internal/skill"
 	"github.com/DnzzL/herdr-automations/internal/wizard"
 )
 
@@ -36,7 +35,6 @@ Usage:
   herdr-automations history [name]   Show recent runs
   herdr-automations cleanup          Remove run worktrees whose work already landed
   herdr-automations pane             Interactive board (used by the Herdr pane)
-  herdr-automations install-skill    Teach your coding agent to write automations
   herdr-automations version          Print the version
 
 Config:  %s
@@ -77,12 +75,6 @@ func main() {
 		err = showHistory(name)
 	case "pane":
 		err = pane.Run()
-	case "install-skill":
-		target := ""
-		if len(os.Args) > 2 {
-			target = os.Args[2]
-		}
-		err = skill.Install(target)
 	case "version", "--version", "-v":
 		fmt.Println(Version)
 	default:

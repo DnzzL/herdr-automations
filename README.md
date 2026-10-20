@@ -51,7 +51,7 @@ a Friday digest — deserve better than you retyping the same prompt every morni
 - **Full run history** — append-only JSONL: `scheduled → running → done | failed | skipped | missed`, with workspace and pane IDs to jump back into
 - **Self-updating daemon** — it re-executes itself when the plugin binary changes, and a file lock keeps a second scheduler from double-firing everything
 - **Live board** — an overlay pane inside Herdr: next run, last status, `r` to run now, `enter` to jump straight into the workspace a run created
-- **Agents can self-schedule** — a bundled [skill](skills/creating-automations/SKILL.md) teaches Claude Code the format: say *"triage my errors every morning"* and the agent writes the entry itself
+- **Agents can self-schedule** — a bundled [skill](skills/creating-automations/SKILL.md) teaches coding agents the format: say *"triage my errors every morning"* and the agent writes the entry itself
 - **A failure finds you** — a run that fails, a run that's missed, or a broken entry raises a Herdr toast; everything else stays quiet
 
 ## What it isn't
@@ -99,11 +99,12 @@ herdr-automations cleanup         # drop the run worktrees whose work already la
 
 ### Let your agent do the scheduling
 
-The plugin ships a skill that teaches coding agents this file format. Agents only
-discover skills under `~/.claude/skills`, so install it once:
+The plugin ships a skill that teaches coding agents this file format. Install it
+once with [`npx skills`](https://github.com/vercel-labs/skills), which links it
+into every agent it finds (Claude Code, Codex, OpenCode, …):
 
 ```bash
-herdr-automations install-skill      # symlinks into ~/.claude/skills
+npx skills add DnzzL/herdr-automations
 ```
 
 Then, in any new agent session, plain language is enough:
@@ -114,8 +115,8 @@ Then, in any new agent session, plain language is enough:
 
 > *"Stop the flaky-hunt automation for now."*
 
-The agent writes the YAML entry, and the daemon picks it up within 30 seconds. It's
-a symlink, so plugin upgrades update the skill too.
+The agent writes the YAML entry, and the daemon picks it up within 30 seconds. The
+skill is a copy: after upgrading the plugin, run `npx skills update` to match.
 
 ### The board, inside Herdr
 
