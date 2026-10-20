@@ -29,6 +29,10 @@ var script = `#!/bin/sh
 ` + marker + ` Safe to delete.
 herdr=${HERDR_BIN_PATH:-herdr}
 [ -x "$herdr" ] || herdr=herdr
+if ! command -v "$herdr" >/dev/null 2>&1; then
+	echo "herdr-automations: herdr not found on PATH" >&2
+	exit 127
+fi
 root=$("$herdr" plugin list --plugin ` + hostpath.PluginID + ` --json 2>/dev/null | sed -n 's/.*"plugin_root":"\([^"]*\)".*/\1/p')
 if [ -z "$root" ]; then
 	echo "herdr-automations: plugin not installed (herdr plugin install DnzzL/herdr-automations)" >&2

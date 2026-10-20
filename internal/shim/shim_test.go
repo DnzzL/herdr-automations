@@ -68,6 +68,26 @@ func TestShimSaysSoWhenThePluginIsNotInstalled(t *testing.T) {
 	}
 }
 
+func TestShimSaysSoWhenHerdrIsNotOnPath(t *testing.T) {
+	// "plugin not installed" would send the user reinstalling a plugin that is
+	// fine.
+	dir := t.TempDir()
+	if err := Install(dir); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", t.TempDir())
+	t.Setenv("HERDR_BIN_PATH", "")
+
+	out, err := exec.Command(filepath.Join(dir, "herdr-automations")).CombinedOutput()
+	var exit *exec.ExitError
+	if !errors.As(err, &exit) || exit.ExitCode() != 127 {
+		t.Fatalf("shim err = %v, want exit 127", err)
+	}
+	if !strings.Contains(string(out), "herdr not found") {
+		t.Fatalf("shim output = %q, want it to say herdr is missing", out)
+	}
+}
+
 func TestInstallTwiceIsFine(t *testing.T) {
 	fakeHost(t, t.TempDir())
 	dir := t.TempDir()
