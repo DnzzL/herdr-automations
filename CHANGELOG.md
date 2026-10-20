@@ -2,7 +2,7 @@
 
 What changed for someone using the plugin. Dates are release dates.
 
-## Unreleased
+## v0.10.0 — 2026-10-20
 
 - `herdr-automations` works from a shell after install. Run
   `herdr plugin action invoke install-cli --plugin dnzzl.automations` once, or
