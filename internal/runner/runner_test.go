@@ -192,7 +192,10 @@ func TestRunSkipsAnAutomationThatIsStillWorking(t *testing.T) {
 	}}
 	r := New(h)
 
-	go func() { _ = r.Run(automation(), "cron") }()
+	// Waited on before returning: a run still recording after t.Setenv is
+	// undone writes into the real history.
+	done := make(chan struct{})
+	go func() { defer close(done); _ = r.Run(automation(), "cron") }()
 	<-entered
 
 	if !r.Busy() {
@@ -203,6 +206,7 @@ func TestRunSkipsAnAutomationThatIsStillWorking(t *testing.T) {
 		t.Fatal("want the second run refused")
 	}
 	close(release)
+	<-done
 
 	var skipped bool
 	for _, rec := range runs(t) {
@@ -230,7 +234,10 @@ func TestRunLetsADifferentAutomationThrough(t *testing.T) {
 	}}
 	r := New(h)
 
-	go func() { _ = r.Run(automation(), "cron") }()
+	// Waited on before returning: a run still recording after t.Setenv is
+	// undone writes into the real history.
+	done := make(chan struct{})
+	go func() { defer close(done); _ = r.Run(automation(), "cron") }()
 	<-entered
 
 	other := automation()
@@ -239,6 +246,7 @@ func TestRunLetsADifferentAutomationThrough(t *testing.T) {
 		t.Fatalf("a different automation was blocked: %v", err)
 	}
 	close(release)
+	<-done
 }
 
 func TestBusyIsFalseOnceARunFinishes(t *testing.T) {
