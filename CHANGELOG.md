@@ -4,6 +4,10 @@ What changed for someone using the plugin. Dates are release dates.
 
 ## Unreleased
 
+- `herdr-automations` works from a shell after install. Run
+  `herdr plugin action invoke install-cli --plugin dnzzl.automations` once, or
+  `herdr-automations install-cli <dir>` for another directory. The shim follows
+  plugin updates.
 - `install-skill` is gone. Install the agent skill with
   `npx skills add DnzzL/herdr-automations`, which reaches Codex, OpenCode and
   other agents, not only Claude Code.

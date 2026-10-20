@@ -70,11 +70,22 @@ schedules, accumulating worktrees — it reports and waits for you.
 
 ```bash
 herdr plugin install DnzzL/herdr-automations   # prebuilt binary, no toolchain needed
+herdr plugin action invoke install-cli --plugin dnzzl.automations   # shim in ~/.local/bin
 herdr-automations add                          # wizard: validates cron, previews next 3 runs
 ```
 
 Prebuilt for macOS and Linux (arm64/amd64), checksum-verified at install; anything
 else builds from source and needs Go.
+
+Herdr doesn't put plugin binaries on `PATH`, so `install-cli` writes a small
+`herdr-automations` shim that asks Herdr where the plugin lives on every call:
+`herdr plugin update` keeps it working. The action runs in the background and
+prints nothing; if `herdr-automations` is then not found, add `~/.local/bin` to
+your `PATH`. To put the shim in another directory:
+
+```bash
+"$(herdr plugin list --plugin dnzzl.automations --json | sed -n 's/.*"plugin_root":"\([^"]*\)".*/\1/p')"/bin/herdr-automations install-cli ~/bin
+```
 
 **Three ways to add an automation**, all writing the same file:
 

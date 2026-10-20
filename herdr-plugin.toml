@@ -17,6 +17,12 @@ title = "Automations: run now"
 contexts = ["workspace"]
 command = ["./bin/herdr-automations", "run", "--pick"]
 
+[[actions]]
+id = "install-cli"
+title = "Automations: put herdr-automations on your PATH"
+contexts = ["workspace"]
+command = ["./bin/herdr-automations", "install-cli"]
+
 [[panes]]
 id = "board"
 title = "Automations"
