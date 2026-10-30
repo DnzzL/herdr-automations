@@ -2,7 +2,7 @@
 
 What changed for someone using the plugin. Dates are release dates.
 
-## Unreleased
+## v0.11.3 — 2026-10-30
 
 - The login service now actually follows `herdr plugin update`. An update
   installs into a new folder and keeps the old one, so v0.11.1's check (the
