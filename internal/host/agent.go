@@ -35,13 +35,15 @@ func (w agentWork) do(s Session, timeout time.Duration) error {
 // args assembles what gets forwarded to the agent executable. Model and MCP
 // config are sugar over agent_args, and go in front so an explicit agent_args
 // entry can still override them.
-func (w agentWork) args() []string {
-	args := w.a.AgentArgs
-	if w.a.Model != "" {
-		args = append([]string{"--model", w.a.Model}, args...)
+func (w agentWork) args() []string { return agentArgs(w.a) }
+
+func agentArgs(a config.Automation) []string {
+	args := a.AgentArgs
+	if a.Model != "" {
+		args = append([]string{"--model", a.Model}, args...)
 	}
-	if w.a.MCPConfig != "" {
-		args = append([]string{"--mcp-config", w.a.MCPConfig}, args...)
+	if a.MCPConfig != "" {
+		args = append([]string{"--mcp-config", a.MCPConfig}, args...)
 	}
 	return args
 }

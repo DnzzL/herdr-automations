@@ -38,6 +38,9 @@ const (
 	// Register: an automation seen for the first time. It starts counting from
 	// now, so adding one at noon does not retroactively fire this morning.
 	Register Kind = "register"
+	// Paused: it came due while every automation was paused. Recorded and
+	// passed over, never caught up: resuming must not replay the holiday.
+	Paused Kind = "paused"
 )
 
 // Decision is one thing to do about one automation.
@@ -104,6 +107,13 @@ func Plan(cfg *config.Config, state State, now time.Time) Result {
 		}
 		res.State.LastOccurrence[a.Name] = occ
 		res.Changed = true
+
+		if cfg.Paused {
+			res.Decisions = append(res.Decisions, Decision{
+				Kind: Paused, Automation: a, At: occ, Count: skipped + 1, Reason: "paused",
+			})
+			continue
+		}
 
 		if skipped > 0 {
 			res.Decisions = append(res.Decisions, Decision{

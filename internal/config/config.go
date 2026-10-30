@@ -37,6 +37,16 @@ const (
 	WorkspaceRoot     Workspace = "root"     // workspace on the repo root
 )
 
+// Backend is the Herdr a run is launched in: the TUI's server, or herdr-core
+// behind the desktop app. The two share no agents (ADR 0011).
+type Backend string
+
+const (
+	BackendAuto  Backend = "auto"  // hc when herdr-core answers, else herdr
+	BackendHerdr Backend = "herdr" // the TUI's server; the default
+	BackendHC    Backend = "hc"    // herdr-core, shown by the desktop app
+)
+
 // Automation is one scheduled entry: a prompt (or delegated workflow) fired
 // on a cron schedule against an agent in a provisioned workspace.
 type Automation struct {
@@ -50,6 +60,10 @@ type Automation struct {
 	WorkspaceID string `yaml:"workspace_id,omitempty"`
 	// Agent kind as understood by `herdr agent start --kind`; defaults to claude.
 	Agent string `yaml:"agent,omitempty"`
+	// Template is an hc template (~/.config/herdr-core/templates/<name>.md):
+	// it brings its own agent, model and instructions, and Prompt becomes its
+	// task. Replaces Agent and Model; hc backend only.
+	Template string `yaml:"template,omitempty"`
 	// Model handed to the agent executable as --model. Empty leaves the agent
 	// on its own default, which may not be the one your quota can afford.
 	// The value is passed through untouched: model names move faster than any
@@ -81,6 +95,12 @@ type Automation struct {
 }
 
 type Config struct {
+	// Backend picks where runs are launched. Defaults to herdr, so a file
+	// written before backends existed keeps running where it always did.
+	Backend Backend `yaml:"backend,omitempty"`
+	// Paused holds every automation, on top of each one's own Disabled, so
+	// resuming restores exactly what was paused before.
+	Paused bool `yaml:"paused,omitempty"`
 	// Automations are the entries that loaded. Only these run.
 	Automations []Automation `yaml:"automations"`
 	// Invalid are the entries that did not, one Diagnostic each. Kept out of
@@ -132,7 +152,7 @@ func (a Automation) CatchUp() time.Duration {
 	return time.Duration(a.CatchUpMinutes) * time.Minute
 }
 
-func (a *Automation) validate() error {
+func (a *Automation) validate(backend Backend) error {
 	if a.Name == "" {
 		return fmt.Errorf("automation without a name")
 	}
@@ -161,6 +181,18 @@ func (a *Automation) validate() error {
 	// session is running is a 3am fact, not a load-time one.
 	if a.Session != "" && (strings.ContainsAny(a.Session, "/\\ \t\n") || strings.HasPrefix(a.Session, ".")) {
 		return fmt.Errorf("%s: session %q is not a Herdr session name", a.Name, a.Session)
+	}
+	if a.Session != "" && backend == BackendHC {
+		return fmt.Errorf("%s: session names a Herdr TUI session; it means nothing under backend: hc", a.Name)
+	}
+	if a.Template != "" && backend != BackendHC {
+		return fmt.Errorf("%s: template requires backend: hc", a.Name)
+	}
+	if a.Template == "" && backend == BackendHC && !KindTakesPromptArg(a.Agent) {
+		return fmt.Errorf("%s: agent %q cannot take its prompt under backend: hc yet (claude, codex and pi can)", a.Name, a.Agent)
+	}
+	if a.Workflow != "" && backend == BackendHC {
+		return fmt.Errorf("%s: workflow drives the Herdr TUI; it cannot run under backend: hc", a.Name)
 	}
 	if a.Model != "" && !KindAcceptsModel(a.Agent) {
 		return fmt.Errorf("%s: agent %q takes no --model; put the flag it does take in agent_args", a.Name, a.Agent)
@@ -195,6 +227,20 @@ var modelFlagKinds = map[string]bool{
 // KindAcceptsModel reports whether this agent kind understands `--model`.
 func KindAcceptsModel(kind string) bool { return modelFlagKinds[kind] }
 
+// promptArgKinds are the agent kinds that take their first message as a
+// trailing argument, which is how the hc host hands over the prompt. Others
+// (opencode's positional is a project, gemini wants -i) need their own flag
+// and are refused under hc until someone needs one.
+var promptArgKinds = map[string]bool{
+	"claude": true,
+	"codex":  true,
+	"pi":     true,
+}
+
+// KindTakesPromptArg reports whether this agent kind takes its prompt as a
+// trailing argument.
+func KindTakesPromptArg(kind string) bool { return promptArgKinds[kind] }
+
 // Dir is where automations.yaml lives.
 func Dir() string { return hostpath.ConfigDir() }
 
@@ -216,17 +262,32 @@ func Load() (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
+	return parse(raw)
+}
+
+// parse is Load without the file, so an edit can be checked before it is
+// written.
+func parse(raw []byte) (*Config, error) {
 	// Decoding through yaml.Node rather than straight into Config is what buys
 	// the line numbers: a diagnostic that cannot say where to look is only
 	// marginally better than silence.
 	var doc struct {
+		Backend     Backend     `yaml:"backend"`
+		Paused      bool        `yaml:"paused"`
 		Automations []yaml.Node `yaml:"automations"`
 	}
 	if err := yaml.Unmarshal(raw, &doc); err != nil {
 		return nil, fmt.Errorf("parse %s: %w", Path(), err)
 	}
+	switch doc.Backend {
+	case "":
+		doc.Backend = BackendHerdr
+	case BackendAuto, BackendHerdr, BackendHC:
+	default:
+		return nil, fmt.Errorf("%s: backend must be herdr, hc or auto, got %q", Path(), doc.Backend)
+	}
 
-	cfg := &Config{}
+	cfg := &Config{Backend: doc.Backend, Paused: doc.Paused}
 	seen := map[string]bool{}
 	for _, node := range doc.Automations {
 		var a Automation
@@ -237,11 +298,19 @@ func Load() (*Config, error) {
 			continue
 		}
 		a.Line = node.Line
+		// Checked before the defaults fill Agent in: a template brings its own.
+		if a.Template != "" && (a.Agent != "" || a.Model != "") {
+			cfg.Invalid = append(cfg.Invalid, Diagnostic{
+				Name: a.Name, Line: a.Line,
+				Message: fmt.Sprintf("%s: template replaces agent and model; drop them", a.Name),
+			})
+			continue
+		}
 		a.applyDefaults()
 		a.Repo = expandHome(a.Repo)
 		a.MCPConfig = expandHome(a.MCPConfig)
 
-		if err := a.validate(); err != nil {
+		if err := a.validate(cfg.Backend); err != nil {
 			cfg.Invalid = append(cfg.Invalid, Diagnostic{
 				Name: a.Name, Line: a.Line, Message: err.Error(),
 			})
@@ -298,11 +367,16 @@ func Save(cfg *Config) error {
 	if err := os.MkdirAll(Dir(), 0o755); err != nil {
 		return err
 	}
-	out, err := yaml.Marshal(cfg)
+	// herdr is the default: writing it would add a line to every file saved.
+	out := *cfg
+	if out.Backend == BackendHerdr {
+		out.Backend = ""
+	}
+	raw, err := yaml.Marshal(&out)
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(Path(), out, 0o644)
+	return os.WriteFile(Path(), raw, 0o644)
 }
 
 // Find returns the automation named name, or nil.

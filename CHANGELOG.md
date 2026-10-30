@@ -2,6 +2,23 @@
 
 What changed for someone using the plugin. Dates are release dates.
 
+## Unreleased
+
+- **The Herdr desktop app.** `backend: hc` runs automations in herdr-core, where
+  the app shows them: each run opens as a space, its worktree where the app's
+  own "New worktree…" puts one. An Automations panel sits beside Files and
+  Changes: an inbox of finished runs, run now, pause, edit, and a form that
+  previews the next runs. Without `backend:` nothing changes.
+- `herdr-automations service install` runs the scheduler as a login service
+  (launchd, systemd), for the app, which has no plugin startup hook.
+- `pause --all` / `resume --all` hold every automation. What comes due
+  meanwhile is recorded as skipped and not replayed on resume.
+- `pause` and `resume` no longer rewrite the whole file: comments stay, and a
+  broken entry elsewhere no longer blocks them.
+- `template:` (hc only) runs an hc template with the prompt as its task.
+- `--json` on `list` and `history`, plus `put`, `rm`, `seen` and `run --bg`:
+  what the panel calls.
+
 ## v0.10.0 — 2026-10-20
 
 - `herdr-automations` works from a shell after install. Run

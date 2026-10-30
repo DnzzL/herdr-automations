@@ -112,3 +112,24 @@ func TestRootPrefersTheEnvironment(t *testing.T) {
 		t.Fatalf("Root() = %q, %v", got, err)
 	}
 }
+
+// launchd hands a service PATH=/usr/bin:/bin. The app installs hc in
+// ~/.local/bin, so a bare "hc" would not resolve from the daemon.
+func TestHCBinFindsTheAppInstallUnderABarePath(t *testing.T) {
+	home := t.TempDir()
+	bin := filepath.Join(home, ".local", "bin")
+	if err := os.MkdirAll(bin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Join(bin, "hc")
+	if err := os.WriteFile(want, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", home)
+	t.Setenv("PATH", "/usr/bin:/bin")
+	t.Setenv("HC_BIN", "")
+
+	if got := HCBin(); got != want {
+		t.Fatalf("HCBin() = %q, want %q", got, want)
+	}
+}

@@ -7,6 +7,7 @@
 package daemon
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -27,10 +28,18 @@ import (
 // run resumes within a minute of the machine waking up.
 const tickInterval = 30 * time.Second
 
-func Run() error {
+// Run is the scheduler. With standby, a lock already held is waited out
+// rather than reported: the service and the TUI's startup hook can both start
+// one, and whichever comes second takes over when the first one stops.
+func Run(standby bool) error {
 	log.SetPrefix("[herdr-automations] ")
 
 	release, err := acquireLock()
+	for err != nil && standby && errors.Is(err, ErrAlreadyRunning) {
+		log.Printf("%v; standing by", err)
+		time.Sleep(tickInterval)
+		release, err = acquireLock()
+	}
 	if err != nil {
 		return err
 	}
@@ -45,8 +54,21 @@ func Run() error {
 		return err
 	}
 	binary := binaryStamp(exe)
-	n := notify.New()
-	runs := runner.NewWith(host.New(), n)
+	// The backend is settled once: a run must be awaited where it was
+	// started. Editing it in the file restarts the daemon (see the loop).
+	backend := config.BackendHerdr
+	if cfg, err := config.Load(); err == nil {
+		backend = cfg.Backend
+	}
+	resolved := host.Resolve(backend)
+	log.Printf("backend %s (%s)", backend, resolved)
+	// Under hc no outside process can raise a toast in the app; the panel
+	// announces failures from history instead (ADR 0011).
+	var n *notify.Notifier
+	if resolved == config.BackendHerdr {
+		n = notify.New()
+	}
+	runs := runner.NewWith(host.For(resolved), n)
 
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
@@ -58,13 +80,19 @@ func Run() error {
 	for {
 		select {
 		case <-tick.C:
-			// A run in flight records how it ended first, as in restart.
-			if !runs.Busy() && noSessionLeft(herdr.Client{}.RunningSessions) {
+			// A run in flight records how it ended first, as in restart. Only a
+			// daemon a TUI session started, running TUI automations, ends with
+			// the last session (ADR 0010): hc needs no session, and the login
+			// service owns its own lifetime (launchd would only relaunch it).
+			if !standby && resolved == config.BackendHerdr && !runs.Busy() && noSessionLeft(herdr.Client{}.RunningSessions) {
 				log.Printf("no Herdr session is running, shutting down")
 				return nil
 			}
 			if stamp := binaryStamp(exe); stamp != binary && stamp != "" {
-				restart(runs, exe)
+				restart(runs, exe, "binary changed")
+			}
+			if cfg, err := config.Load(); err == nil && cfg.Backend != backend {
+				restart(runs, exe, "backend changed")
 			}
 			evaluate(state, runs, n)
 		case s := <-sigs:
@@ -107,6 +135,9 @@ func evaluate(state *scheduleState, runs *runner.Runner, n *notify.Notifier) {
 			recordMissed(d.Automation.Name, d.Count, d.Reason)
 			missed = append(missed, d.Automation.Name)
 			log.Printf("%s: missed (%s)", d.Automation.Name, d.Reason)
+		case schedule.Paused:
+			recordPassedOver(d.Automation.Name, d.Count)
+			log.Printf("%s: passed over, automations are paused", d.Automation.Name)
 		case schedule.Fire:
 			if d.Trigger == history.TriggerCatchup {
 				log.Printf("%s: running %s late", d.Automation.Name,
@@ -171,6 +202,23 @@ func reportInvalid(cfg *config.Config, state *scheduleState) (changed bool, newl
 	return changed, newlyInvalid
 }
 
+// recordPassedOver notes an occurrence that came due while every automation
+// was paused. Skipped, not missed: nothing went wrong, so nothing is toasted.
+func recordPassedOver(name string, count int) {
+	detail := "paused"
+	if count > 1 {
+		detail = fmt.Sprintf("%d occurrences: paused", count)
+	}
+	err := history.Append(history.Record{
+		RunID:      history.NewID(name, "paused"),
+		Automation: name, Trigger: history.TriggerCron, Status: history.StatusSkipped,
+		At: time.Now(), Error: detail,
+	})
+	if err != nil {
+		log.Printf("history append failed: %v", err)
+	}
+}
+
 func recordMissed(name string, count int, why string) {
 	detail := why
 	if count > 1 {
@@ -191,11 +239,11 @@ func recordMissed(name string, count int, why string) {
 // execve is syscall.Exec, swappable so a test can make the re-exec fail.
 var execve = syscall.Exec
 
-func restart(runs *runner.Runner, exe string) {
+func restart(runs *runner.Runner, exe, why string) {
 	if runs.Busy() {
 		return // let the in-flight run finish; we'll notice again next tick
 	}
-	log.Printf("binary changed, re-executing %s", exe)
+	log.Printf("%s, re-executing %s", why, exe)
 	// No release here: the lock's descriptor is close-on-exec, so a successful
 	// exec drops it for the new image, and a failed one leaves it held.
 	if err := execve(exe, os.Args, os.Environ()); err != nil {

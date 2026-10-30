@@ -86,3 +86,20 @@ func holderPID(path string) string {
 	}
 	return "unknown"
 }
+
+// Running reports whether a scheduler holds the lock, and its pid when the
+// pidfile says. The flock decides, not the pid: a pid can outlive its daemon
+// or be reused.
+func Running() (int, bool) {
+	f, err := os.Open(filepath.Join(config.StateDir(), "daemon.pid"))
+	if err != nil {
+		return 0, false
+	}
+	defer f.Close()
+	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_SH|syscall.LOCK_NB); err == nil {
+		_ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
+		return 0, false
+	}
+	pid, _ := strconv.Atoi(holderPID(f.Name()))
+	return pid, true
+}

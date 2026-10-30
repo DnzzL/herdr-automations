@@ -35,8 +35,14 @@ func New(h host.Host) *Runner { return &Runner{host: h} }
 // NewWith returns a Runner that also toasts through n.
 func NewWith(h host.Host, n *notify.Notifier) *Runner { return &Runner{host: h, notifier: n} }
 
-// Default returns a Runner driving the real Herdr.
-func Default() *Runner { return New(host.New()) }
+// Default returns a Runner driving the backend automations.yaml names.
+func Default() *Runner {
+	b := config.BackendHerdr
+	if cfg, err := config.Load(); err == nil {
+		b = cfg.Backend
+	}
+	return New(host.For(b))
+}
 
 // Busy reports whether any automation is mid-run.
 func (r *Runner) Busy() bool {

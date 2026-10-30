@@ -165,7 +165,7 @@ func TestFailedReExecKeepsTheLock(t *testing.T) {
 
 	defer func(orig func(string, []string, []string) error) { execve = orig }(execve)
 	execve = func(string, []string, []string) error { return syscall.ENOEXEC }
-	restart(runner.New(nil), "")
+	restart(runner.New(nil), "", "binary changed")
 
 	out, err := runLockHelper(dir)
 	if err != nil {
@@ -208,7 +208,7 @@ func TestReinstallReExecsTheBinaryAtTheStartupPath(t *testing.T) {
 	defer func(orig func(string, []string, []string) error) { execve = orig }(execve)
 	var execd string
 	execve = func(path string, _ []string, _ []string) error { execd = path; return nil }
-	restart(runner.New(nil), exe)
+	restart(runner.New(nil), exe, "binary changed")
 	if execd != exe {
 		t.Errorf("re-exec targeted %q, want the startup path %q", execd, exe)
 	}
@@ -225,5 +225,24 @@ func TestASecondDaemonIsToldItIsNotNeeded(t *testing.T) {
 	defer release()
 	if _, err := acquireLock(); !errors.Is(err, ErrAlreadyRunning) {
 		t.Fatalf("err = %v, want ErrAlreadyRunning", err)
+	}
+}
+
+// The panel's "Scheduler stopped" banner reads this.
+func TestRunningFollowsTheLock(t *testing.T) {
+	t.Setenv("HERDR_PLUGIN_STATE_DIR", t.TempDir())
+	if _, ok := Running(); ok {
+		t.Fatal("running with no daemon")
+	}
+	release, err := acquireLock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pid, ok := Running(); !ok || pid != os.Getpid() {
+		t.Fatalf("got %d %v while holding the lock", pid, ok)
+	}
+	release()
+	if _, ok := Running(); ok {
+		t.Fatal("still running after release")
 	}
 }
