@@ -2,7 +2,7 @@
 
 What changed for someone using the plugin. Dates are release dates.
 
-## Unreleased
+## v0.11.0 — 2026-10-30
 
 - **The Herdr desktop app.** `backend: hc` runs automations in herdr-core, where
   the app shows them: each run opens as a space, its worktree where the app's
