@@ -12,6 +12,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -19,6 +20,7 @@ import (
 	"github.com/DnzzL/herdr-automations/internal/herdr"
 	"github.com/DnzzL/herdr-automations/internal/history"
 	"github.com/DnzzL/herdr-automations/internal/host"
+	"github.com/DnzzL/herdr-automations/internal/hostpath"
 	"github.com/DnzzL/herdr-automations/internal/notify"
 	"github.com/DnzzL/herdr-automations/internal/runner"
 	"github.com/DnzzL/herdr-automations/internal/schedule"
@@ -89,8 +91,12 @@ func Run(standby bool) error {
 				return nil
 			}
 			stamp := binaryStamp(exe)
-			if binaryGone(standby, stamp) && !runs.Busy() {
-				log.Printf("%s is gone (plugin updated?), leaving for the service to relaunch", exe)
+			installed := ""
+			if standby {
+				installed = hostpath.InstalledBinary()
+			}
+			if shouldRelaunch(standby, stamp, exe, installed) && !runs.Busy() {
+				log.Printf("running %s, installed is %s: leaving for the service to relaunch", exe, installed)
 				return nil
 			}
 			if stamp != binary && stamp != "" {
@@ -107,11 +113,18 @@ func Run(standby bool) error {
 	}
 }
 
-// binaryGone reports whether the login service should leave so launchd
-// relaunches it: its binary was moved away, as a plugin update does to the
-// checkout. The service runs through the install-cli shim, which finds the new
-// one. A daemon a TUI session started has no one to relaunch it; it stays.
-func binaryGone(standby bool, stamp string) bool { return standby && stamp == "" }
+// shouldRelaunch reports whether the login service should leave so launchd
+// relaunches it through the install-cli shim: a plugin update installed a new
+// checkout (and kept the old one, so the running binary is still there), or
+// moved the running binary away. A Herdr that cannot say where the plugin is
+// changes nothing. A daemon a TUI session started has no one to relaunch it;
+// it is re-executed in place instead (#8).
+func shouldRelaunch(standby bool, stamp, exe, installed string) bool {
+	if !standby {
+		return false
+	}
+	return stamp == "" || (installed != "" && filepath.Clean(installed) != filepath.Clean(exe))
+}
 
 // noSessionLeft decides when the daemon is done. It outlives the session that
 // started it — every run names its own, and a session already up never re-runs

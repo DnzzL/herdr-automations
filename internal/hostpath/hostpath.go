@@ -13,6 +13,7 @@
 package hostpath
 
 import (
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -99,4 +100,36 @@ func Root() (string, error) {
 		return "", err
 	}
 	return filepath.Dir(filepath.Dir(exe)), nil
+}
+
+// InstalledBinary is where Herdr has the plugin's binary now, or "" when it
+// cannot say. A plugin update installs into a new checkout and leaves the old
+// one in place, so a long-running process can only learn it is stale by
+// asking. The install-cli shim asks the same question on every call.
+func InstalledBinary() string {
+	out, err := exec.Command(Bin(), "plugin", "list", "--plugin", PluginID, "--json").Output()
+	if err != nil {
+		return ""
+	}
+	return installedBinary(out)
+}
+
+func installedBinary(raw []byte) string {
+	var list struct {
+		Result struct {
+			Plugins []struct {
+				ID   string `json:"plugin_id"`
+				Root string `json:"plugin_root"`
+			} `json:"plugins"`
+		} `json:"result"`
+	}
+	if json.Unmarshal(raw, &list) != nil {
+		return ""
+	}
+	for _, p := range list.Result.Plugins {
+		if p.ID == PluginID && p.Root != "" {
+			return filepath.Join(p.Root, "bin", "herdr-automations")
+		}
+	}
+	return ""
 }
