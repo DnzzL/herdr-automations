@@ -53,7 +53,7 @@ top to bottom:
     NAME; SCHEDULE as pills (Hourly, Every morning, Weekdays 9:00, Mondays 9:00,
     Fridays 17:00, Custom) over a cron input; REPO with `Choose…`; RUNS IN as pills
     (New worktree, Repo root, Existing space, the last opening a pill per local
-    space); AGENT as pills (claude, codex, pi, then each hc template); MODEL (hidden
+    space); AGENT as pills (claude, codex, pi, copilot, then each hc template); MODEL (hidden
     for a template); PROMPT (textarea, 4–12 rows); TIMEOUT (MINUTES); MCP CONFIG.
     Below: "Next: in 3h, Mon 09:00, Tue 09:00" in `muted`, or the problem in `ansi1`.
     `Cancel`, `Save` (solid) at the right.

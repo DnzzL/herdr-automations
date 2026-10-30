@@ -2,6 +2,13 @@
 
 What changed for someone using the plugin. Dates are release dates.
 
+## Unreleased
+
+- GitHub Copilot runs under `backend: hc`, and the panel's form offers it. Its
+  prompt goes in through `-i` (a bare argument is refused, and `-p` would exit
+  after one answer). Trust `~/.herdr/worktrees` in Copilot once, or a run in a
+  new worktree waits on Copilot's folder question.
+
 ## v0.11.3 — 2026-10-30
 
 - The login service now actually follows `herdr plugin update`. An update
