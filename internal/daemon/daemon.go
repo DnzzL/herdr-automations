@@ -7,6 +7,7 @@
 package daemon
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -26,10 +27,18 @@ import (
 // run resumes within a minute of the machine waking up.
 const tickInterval = 30 * time.Second
 
-func Run() error {
+// Run is the scheduler. With standby, a lock already held is waited out
+// rather than reported: the service and the TUI's startup hook can both start
+// one, and whichever comes second takes over when the first one stops.
+func Run(standby bool) error {
 	log.SetPrefix("[herdr-automations] ")
 
 	release, err := acquireLock()
+	for err != nil && standby && errors.Is(err, errLocked) {
+		log.Printf("%v; standing by", err)
+		time.Sleep(tickInterval)
+		release, err = acquireLock()
+	}
 	if err != nil {
 		return err
 	}
@@ -38,8 +47,21 @@ func Run() error {
 	log.Printf("daemon starting, config=%s", config.Path())
 	state := loadState()
 	binary := binaryStamp()
-	n := notify.New()
-	runs := runner.NewWith(host.New(), n)
+	// The backend is settled once: a run must be awaited where it was
+	// started. Editing it in the file restarts the daemon (see evaluate).
+	backend := config.BackendHerdr
+	if cfg, err := config.Load(); err == nil {
+		backend = cfg.Backend
+	}
+	resolved := host.Resolve(backend)
+	log.Printf("backend %s (%s)", backend, resolved)
+	// Under hc no outside process can raise a toast in the app; the panel
+	// announces failures from history instead (ADR 0010).
+	var n *notify.Notifier
+	if resolved == config.BackendHerdr {
+		n = notify.New()
+	}
+	runs := runner.NewWith(host.For(resolved), n)
 
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
@@ -52,7 +74,10 @@ func Run() error {
 		select {
 		case <-tick.C:
 			if stamp := binaryStamp(); stamp != binary && stamp != "" {
-				restart(release, runs)
+				restart(release, runs, "binary changed")
+			}
+			if cfg, err := config.Load(); err == nil && cfg.Backend != backend {
+				restart(release, runs, "backend changed")
 			}
 			evaluate(state, runs, n)
 		case s := <-sigs:
@@ -84,6 +109,9 @@ func evaluate(state *scheduleState, runs *runner.Runner, n *notify.Notifier) {
 			recordMissed(d.Automation.Name, d.Count, d.Reason)
 			missed = append(missed, d.Automation.Name)
 			log.Printf("%s: missed (%s)", d.Automation.Name, d.Reason)
+		case schedule.Paused:
+			recordPassedOver(d.Automation.Name, d.Count)
+			log.Printf("%s: passed over, automations are paused", d.Automation.Name)
 		case schedule.Fire:
 			if d.Trigger == history.TriggerCatchup {
 				log.Printf("%s: running %s late", d.Automation.Name,
@@ -148,6 +176,23 @@ func reportInvalid(cfg *config.Config, state *scheduleState) (changed bool, newl
 	return changed, newlyInvalid
 }
 
+// recordPassedOver notes an occurrence that came due while every automation
+// was paused. Skipped, not missed: nothing went wrong, so nothing is toasted.
+func recordPassedOver(name string, count int) {
+	detail := "paused"
+	if count > 1 {
+		detail = fmt.Sprintf("%d occurrences: paused", count)
+	}
+	err := history.Append(history.Record{
+		RunID:      history.NewID(name, "paused"),
+		Automation: name, Trigger: history.TriggerCron, Status: history.StatusSkipped,
+		At: time.Now(), Error: detail,
+	})
+	if err != nil {
+		log.Printf("history append failed: %v", err)
+	}
+}
+
 func recordMissed(name string, count int, why string) {
 	detail := why
 	if count > 1 {
@@ -165,7 +210,7 @@ func recordMissed(name string, count int, why string) {
 
 // restart re-executes the daemon so a plugin upgrade takes effect without
 // waiting for the Herdr server to be restarted.
-func restart(release func(), runs *runner.Runner) {
+func restart(release func(), runs *runner.Runner, why string) {
 	if runs.Busy() {
 		return // let the in-flight run finish; we'll notice again next tick
 	}
@@ -174,7 +219,7 @@ func restart(release func(), runs *runner.Runner) {
 		log.Printf("cannot locate the new binary: %v", err)
 		return
 	}
-	log.Printf("binary changed, re-executing %s", exe)
+	log.Printf("%s, re-executing %s", why, exe)
 	release() // the new process takes the lock
 	if err := syscall.Exec(exe, os.Args, os.Environ()); err != nil {
 		log.Printf("re-exec failed, continuing with the old build: %v", err)

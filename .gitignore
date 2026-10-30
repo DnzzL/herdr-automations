@@ -4,3 +4,6 @@ scripts/demo/*.cast
 scripts/demo/wizcfg/
 scripts/demo/wframes/
 scripts/demo/frames/
+# Written by the Herdr app into every mod folder
+app/mods/*/*.d.ts
+app/mods/*/jsconfig.json

@@ -261,15 +261,15 @@ func TestSaveRefusesToDropTheEntriesThatDidNotLoad(t *testing.T) {
 
 func TestExistingWorkspaceValidation(t *testing.T) {
 	a := Automation{Name: "inbox", Cron: "@hourly", Repo: "/repo", Prompt: "check", Workspace: WorkspaceExisting}
-	if err := a.validate(); err == nil {
+	if err := a.validate(BackendAuto); err == nil {
 		t.Fatal("missing workspace_id accepted")
 	}
 	a.WorkspaceID = "w7"
-	if err := a.validate(); err != nil {
+	if err := a.validate(BackendAuto); err != nil {
 		t.Fatal(err)
 	}
 	a.Workspace = WorkspaceRoot
-	if err := a.validate(); err == nil {
+	if err := a.validate(BackendAuto); err == nil {
 		t.Fatal("ignored workspace_id accepted")
 	}
 }
@@ -300,5 +300,133 @@ func TestExistingWorkspaceSurvivesConfigRoundTrip(t *testing.T) {
 	a := cfg.Find("daily-summary")
 	if a == nil || a.Workspace != WorkspaceExisting || a.WorkspaceID != "w7" {
 		t.Fatalf("existing workspace was lost on save: %+v", a)
+	}
+}
+
+func TestLoadReadsBackendAndGlobalPause(t *testing.T) {
+	withConfig(t, `backend: hc
+paused: true
+automations: []
+`)
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Backend != BackendHC || !cfg.Paused {
+		t.Fatalf("got backend %q paused %v", cfg.Backend, cfg.Paused)
+	}
+}
+
+// A file written before backends existed keeps running where it always did.
+// Defaulting to auto would move every TUI user who also has the app to hc on
+// upgrade, without a word.
+func TestLoadDefaultsBackendToHerdr(t *testing.T) {
+	withConfig(t, "automations: []\n")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Backend != BackendHerdr {
+		t.Fatalf("got %q", cfg.Backend)
+	}
+}
+
+// An unknown backend leaves nothing runnable: every entry would be launched
+// somewhere nobody looks. That is a file error, not one diagnostic.
+func TestLoadRejectsUnknownBackend(t *testing.T) {
+	withConfig(t, "backend: tmux\nautomations: []\n")
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "backend") {
+		t.Fatalf("expected a backend error, got %v", err)
+	}
+}
+
+func TestTemplateNeedsTheHCBackendAndNoAgent(t *testing.T) {
+	entry := func(extra string) string {
+		return `
+  - name: t
+    cron: "@daily"
+    repo: /x
+    prompt: p
+    template: reviewer` + extra
+	}
+	cases := []struct {
+		backend, extra, want string
+	}{
+		{"hc", "", ""},
+		{"auto", "", "template requires backend: hc"},
+		{"herdr", "", "template requires backend: hc"},
+		{"hc", "\n    agent: codex", "template replaces agent and model"},
+		{"hc", "\n    model: opus", "template replaces agent and model"},
+	}
+	for _, c := range cases {
+		withConfig(t, "backend: "+c.backend+"\nautomations:"+entry(c.extra)+"\n")
+		cfg, err := Load()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if c.want == "" {
+			if len(cfg.Automations) != 1 || cfg.Automations[0].Template != "reviewer" {
+				t.Fatalf("%s%s: expected it to load, got %+v", c.backend, c.extra, cfg.Invalid)
+			}
+			continue
+		}
+		if len(cfg.Invalid) != 1 || !strings.Contains(cfg.Invalid[0].Message, c.want) {
+			t.Fatalf("%s%s: want %q, got %+v", c.backend, c.extra, c.want, cfg.Invalid)
+		}
+	}
+}
+
+// herdr-workflows drives the TUI's server; under hc it would start nothing.
+func TestWorkflowIsRefusedUnderHC(t *testing.T) {
+	withConfig(t, `backend: hc
+automations:
+  - name: w
+    cron: "@daily"
+    repo: /x
+    workflow: nightly
+`)
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.Invalid) != 1 || !strings.Contains(cfg.Invalid[0].Message, "workflow") {
+		t.Fatalf("got %+v", cfg.Invalid)
+	}
+}
+
+func TestSaveKeepsBackendAndPause(t *testing.T) {
+	withConfig(t, "backend: hc\nautomations: []\n")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.Paused = true
+	if err := Save(cfg); err != nil {
+		t.Fatal(err)
+	}
+	again, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again.Backend != BackendHC || !again.Paused {
+		t.Fatalf("got backend %q paused %v", again.Backend, again.Paused)
+	}
+}
+
+func TestHCRefusesAnAgentThatCannotTakeItsPrompt(t *testing.T) {
+	withConfig(t, `backend: hc
+automations:
+  - name: o
+    cron: "@daily"
+    repo: /x
+    prompt: p
+    agent: opencode
+`)
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.Invalid) != 1 || !strings.Contains(cfg.Invalid[0].Message, "cannot take its prompt") {
+		t.Fatalf("got %+v", cfg.Invalid)
 	}
 }

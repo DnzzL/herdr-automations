@@ -35,6 +35,23 @@ func Bin() string {
 	return "herdr"
 }
 
+// HCBin locates herdr-core's CLI. A launchd or systemd service starts with a
+// bare PATH that rarely holds ~/.local/bin, where the desktop app installs it,
+// so that is the fallback rather than a bare "hc" that would not resolve.
+func HCBin() string {
+	if b := os.Getenv("HC_BIN"); b != "" && usable(b) {
+		return b
+	}
+	if b, err := exec.LookPath("hc"); err == nil {
+		return b
+	}
+	home, _ := os.UserHomeDir()
+	if b := filepath.Join(home, ".local", "bin", "hc"); usable(b) {
+		return b
+	}
+	return "hc"
+}
+
 // usable reports whether path is something we could actually execute.
 func usable(path string) bool {
 	info, err := os.Stat(path)

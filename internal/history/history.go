@@ -67,6 +67,13 @@ type Record struct {
 	WorkspaceID string    `json:"workspace_id,omitempty"`
 	PaneID      string    `json:"pane_id,omitempty"`
 	Error       string    `json:"error,omitempty"`
+	// Seen marks a finished run as opened, for the panel's inbox. On disk it
+	// is a copy of the run's latest record with the flag set; Runs folds it
+	// into the run rather than letting it stand in for the status.
+	Seen bool `json:"seen,omitempty"`
+	// Started is when the run's first record was written. Filled in by Runs,
+	// never stored: the first record already says it.
+	Started time.Time `json:"-"`
 }
 
 func path() string { return filepath.Join(config.StateDir(), "history.jsonl") }
@@ -114,8 +121,19 @@ func Runs(automation string, limit int) ([]Record, error) {
 		if automation != "" && r.Automation != automation {
 			continue
 		}
-		if _, ok := latest[r.RunID]; !ok {
+		prev, ok := latest[r.RunID]
+		if r.Seen {
+			if ok {
+				prev.Seen = true
+				latest[r.RunID] = prev
+			}
+			continue
+		}
+		if !ok {
 			order = append(order, r.RunID)
+			r.Started = r.At
+		} else {
+			r.Started, r.Seen = prev.Started, prev.Seen
 		}
 		latest[r.RunID] = r
 	}
@@ -140,4 +158,41 @@ func LastRun(automation string) (*Record, error) {
 		return nil, err
 	}
 	return &runs[0], nil
+}
+
+// MarkSeen records that a run was opened.
+func MarkSeen(runID string) error {
+	runs, err := Runs("", 0)
+	if err != nil {
+		return err
+	}
+	for _, r := range runs {
+		if r.RunID == runID {
+			// A full copy, not just the flag: a reader that predates Seen
+			// takes the last record per run as its state, and must still
+			// find the run's status there.
+			r.Seen = true
+			return Append(r)
+		}
+	}
+	return fmt.Errorf("no run %q", runID)
+}
+
+// MarkAllSeen marks every finished run as opened. A run still going is left
+// alone: it lands in the inbox when it ends.
+func MarkAllSeen() error {
+	runs, err := Runs("", 0)
+	if err != nil {
+		return err
+	}
+	for _, r := range runs {
+		if r.Seen || r.Status == StatusScheduled || r.Status == StatusRunning {
+			continue
+		}
+		r.Seen = true
+		if err := Append(r); err != nil {
+			return err
+		}
+	}
+	return nil
 }

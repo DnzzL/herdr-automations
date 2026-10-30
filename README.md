@@ -52,6 +52,7 @@ a Friday digest — deserve better than you retyping the same prompt every morni
 - **Self-updating daemon** — it re-executes itself when the plugin binary changes, and a PID lock keeps a second scheduler from double-firing everything
 - **Live board** — an overlay pane inside Herdr: next run, last status, `r` to run now, `enter` to jump straight into the workspace a run created
 - **Agents can self-schedule** — a bundled [skill](skills/creating-automations/SKILL.md) teaches Claude Code the format: say *"triage my errors every morning"* and the agent writes the entry itself
+- **Herdr desktop app** — `backend: hc` runs automations in the [app](#in-the-herdr-desktop-app), with a panel beside Files and Changes: an inbox of finished runs, run now, pause, and a form with the next runs previewed
 - **A failure finds you** — a run that fails, a run that's missed, or a broken entry raises a Herdr toast; everything else stays quiet
 
 ## What it isn't
@@ -145,6 +146,57 @@ command = "herdr plugin pane open --plugin dnzzl.automations --entrypoint board 
 The plugin also registers an action (`herdr plugin action invoke run-now --plugin dnzzl.automations`)
 that prompts for which automation to fire.
 
+### In the Herdr desktop app
+
+The [Herdr app](https://herdr.dev) runs its agents in herdr-core (`hc`), not in the
+TUI's server, and the two share no agents. Set `backend: hc` and runs open as spaces
+in the app instead, with a panel of their own beside Files and Changes:
+
+<img src="docs/app-panel.png" alt="The Automations panel in the Herdr app: an inbox of finished runs, then every automation with its schedule, next run and agent" width="430">
+
+- **Inbox** — runs that finished since you last looked; a failure says why. Click one to
+  jump into its terminal while it is still open. `Mark all read` clears it
+- **Every automation** — schedule in words, next run, agent and model; its dot takes the
+  app's working or blocked color while a run is live, and red when the last one failed.
+  `▶` runs it now
+- **Detail and form** — click an automation for its history, `Run now`, `Pause`, `Edit`,
+  `Delete`. `+` opens the form: schedule presets or raw cron with the next three runs
+  previewed as you type, a folder picker for the repo, the agent or an `hc` template
+- **Pause everything** — the switch in the header holds every automation. What comes due
+  meanwhile is logged as skipped and never replayed when you switch back
+
+```yaml
+backend: hc        # herdr (the default), hc, or auto: hc when herdr-core answers
+automations:
+  - name: issue-triage
+    template: reviewer   # hc only: a template brings its own agent, model and instructions
+    # …
+```
+
+A run in `worktree` mode checks out where the app's own **New worktree…** would
+(`~/.herdr/worktrees/<repo>/<branch>`), so the app nests it under the repo's space when
+one is open. Closing a run's space calls the run off, as in the TUI.
+
+**Install without the TUI.** The app has no plugin startup hook, so the scheduler runs
+as a login service (a launchd agent on macOS, a systemd user unit on Linux):
+
+```bash
+git clone https://github.com/DnzzL/herdr-automations && cd herdr-automations
+sh scripts/install.sh                                    # prebuilt binary into bin/
+ln -s "$PWD/bin/herdr-automations" ~/.local/bin/         # where the panel looks for it
+herdr-automations service install                        # scheduler at login, now
+cp -R app/mods/automations ~/.config/herdr-app/mods/     # the panel
+```
+
+The panel needs a slot in your layout: clone the shipped `main` layout and `tabs` mod
+(`herdr-app do layout.clone --name main --as main-plus`, then `mod.clone` for `tabs`),
+add an `automations` block to the `panel-body` stack, and a button for it in the tab bar.
+Your agent can do it from [`~/.config/herdr-app/AGENTS.md`](https://herdr.dev/mods).
+
+Under `backend: hc`, agents take their prompt as an argument, which `claude`, `codex`
+and `pi` do; other kinds are refused when the file loads. `workflow:` entries drive the
+TUI and are refused too.
+
 ## How a run works
 
 ```mermaid
@@ -162,6 +214,8 @@ Everything goes through the `herdr` CLI — the same socket API agents themselve
 ## Full entry reference
 
 ```yaml
+backend: hc                       # optional: herdr (default) | hc (the desktop app) | auto
+paused: true                      # optional: hold every automation (the panel's switch)
 automations:
   - name: issue-triage            # unique, kebab-case
     cron: "0 9 * * 1-5"           # 5-field crontab, or @daily / @hourly / @weekly
@@ -169,6 +223,7 @@ automations:
     workspace: worktree           # worktree (default) | root | existing
     agent: claude                 # any `herdr agent start --kind`
     model: sonnet                 # optional → --model; kinds without the flag are caught on load
+    template: reviewer            # hc only, instead of agent + model: an hc template, prompt as its task
     prompt: "…"                   # OR workflow: <name>  (delegates to hwf run)
     mcp_config: ~/.config/mcp/github.json   # optional → --mcp-config
     agent_args: ["--verbose"]               # optional, verbatim agent flags
@@ -218,6 +273,7 @@ agent's own posture is Herdr's to describe.
 - **Opens no ports**, phones nothing home, and downloads nothing at runtime — the only network access is `herdr plugin install` fetching a checksum-verified release binary
 - **Raises a Herdr toast** on a failed run, a missed run, or a broken `automations.yaml` entry — in-session only: a panel inside the Herdr window, not an OS notification, and not sent anywhere
 - **`herdr plugin uninstall`** removes the plugin and leaves your config and history where they are
+- **With the app** — `service install` writes one file, `~/Library/LaunchAgents/dev.dnzzl.herdr-automations.plist` (or `~/.config/systemd/user/herdr-automations.service`), with your `PATH` in it so the scheduler finds `hc`, `git` and the agents. `service uninstall` removes it. Under `backend: hc` no Herdr toast exists for an outside process to raise, so failures are announced by the panel while a Herdr window is open
 
 ## FAQ
 
@@ -284,7 +340,25 @@ An automation is one prompt on a clock. That is the whole boundary.
 ```bash
 go build -o bin/herdr-automations . && go test ./...
 herdr plugin link .        # use your checkout as the installed plugin
+go test -tags hc ./internal/host/ -run Live   # against the real herdr-core, Herdr app open
+scripts/dev-app.sh         # copy the panel into the app (a symlink is not reloaded)
 ```
+
+Design decisions live in [`docs/adr/`](docs/adr/); the app backend is
+[ADR 0010](docs/adr/0010-the-app-backend.md).
+
+## Known gaps
+
+- **Overlap guard is per process** — `▶` in the panel starts a separate process, which
+  does not see a scheduled run of the same automation already working, so both can run
+- **Resuming one paused automation** may record the occurrences it skipped as `missed`;
+  the global pause does not
+- **Space adoption while the app is closed** is untested: a run started then should
+  appear on next open
+- **The panel finds the CLI** on `PATH`, else `~/.local/bin`; installed anywhere else, it
+  shows an error
+- **Sharing on herdr.dev/mods** waits on a week of local use, and on Herdr making panel
+  buttons data-driven so the panel installs without cloning `main` and `tabs`
 
 PRs welcome — especially agent kinds tested in the wild, cleanup policies, and notification shapes.
 

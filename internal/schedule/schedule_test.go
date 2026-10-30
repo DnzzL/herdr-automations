@@ -291,3 +291,26 @@ func TestNextRunSaysSoWhenTheCronIsUnparseable(t *testing.T) {
 		t.Fatal("want ok=true for @daily")
 	}
 }
+
+// A global pause holds every automation without forgetting where each one is:
+// what came due while paused is recorded and passed over, so resuming does not
+// replay the holiday.
+func TestPlanPassesOverWhatIsDueWhileGloballyPaused(t *testing.T) {
+	cfg := cfgOf(weekday("triage"))
+	cfg.Paused = true
+	res := Plan(cfg, state(map[string]time.Time{"triage": at(t, "2026-08-10 07:00")}),
+		at(t, "2026-08-10 09:00"))
+
+	if len(res.Decisions) != 1 || res.Decisions[0].Kind != Paused {
+		t.Fatalf("decisions = %+v, want one Paused", res.Decisions)
+	}
+	if got := res.State.LastOccurrence["triage"]; !got.Equal(at(t, "2026-08-10 09:00")) {
+		t.Fatalf("state = %s, want it moved past the paused occurrence", got)
+	}
+
+	cfg.Paused = false
+	res = Plan(cfg, res.State, at(t, "2026-08-10 09:05"))
+	if len(res.Decisions) != 0 {
+		t.Fatalf("after resume: decisions = %+v, want none", res.Decisions)
+	}
+}
