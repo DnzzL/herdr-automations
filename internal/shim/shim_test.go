@@ -114,3 +114,28 @@ func TestInstallRefusesToOverwriteAFileItDidNotWrite(t *testing.T) {
 		t.Fatalf("file was changed to %q", got)
 	}
 }
+
+// The login service runs whatever Find returns, so that a plugin update, which
+// moves the checkout, does not leave launchd pointing at a deleted binary.
+func TestFindReturnsOurShimOnPathAndNothingElse(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("PATH", dir)
+	if _, ok := Find(); ok {
+		t.Fatal("found a shim on an empty PATH")
+	}
+	if err := os.WriteFile(filepath.Join(dir, name), []byte("#!/bin/sh\necho someone else\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := Find(); ok {
+		t.Fatal("took someone else's herdr-automations for our shim")
+	}
+	if err := os.Remove(filepath.Join(dir, name)); err != nil {
+		t.Fatal(err)
+	}
+	if err := Install(dir); err != nil {
+		t.Fatal(err)
+	}
+	if got, ok := Find(); !ok || got != filepath.Join(dir, name) {
+		t.Fatalf("Find() = %q, %v", got, ok)
+	}
+}

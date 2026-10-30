@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 
@@ -43,6 +44,20 @@ exec "$root/bin/herdr-automations" "$@"
 
 // ErrNotOurs: something other than our shim already sits at the target path.
 var ErrNotOurs = errors.New("not a herdr-automations shim")
+
+// Find returns the shim on PATH, if the herdr-automations found there is one
+// we wrote. Anything else by that name is not ours to point a service at.
+func Find() (string, bool) {
+	path, err := exec.LookPath(name)
+	if err != nil {
+		return "", false
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil || !bytes.Contains(raw, []byte(marker)) {
+		return "", false
+	}
+	return path, true
+}
 
 // Install writes the shim into dir (default ~/.local/bin). Rerunning is a
 // no-op; an older shim of ours is rewritten. Errors: ErrNotOurs when another

@@ -464,11 +464,23 @@ func serviceCmd(args []string) error {
 			"HERDR_PLUGIN_CONFIG_DIR": config.Dir(),
 			"HERDR_PLUGIN_STATE_DIR":  config.StateDir(),
 		}
-		path, err := service.Install(env, filepath.Join(config.StateDir(), "daemon.log"))
+		// The shim, when there is one: a plugin update moves the checkout,
+		// and the shim finds wherever it went. Else this binary, wherever it is.
+		program, ok := shim.Find()
+		if !ok {
+			exe, err := os.Executable()
+			if err != nil {
+				return err
+			}
+			if program, err = filepath.EvalSymlinks(exe); err != nil {
+				return err
+			}
+		}
+		path, err := service.Install(program, env, filepath.Join(config.StateDir(), "daemon.log"))
 		if err != nil {
 			return err
 		}
-		fmt.Printf("Installed %s\nConfig: %s\n", path, config.Path())
+		fmt.Printf("Installed %s\nRuns: %s\nConfig: %s\n", path, program, config.Path())
 	case "uninstall":
 		if err := service.Uninstall(); err != nil {
 			return err

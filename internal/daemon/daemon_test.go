@@ -167,3 +167,18 @@ func TestTheDaemonStopsOnlyOnceNoSessionIsLeft(t *testing.T) {
 		}
 	}
 }
+
+// A plugin update moves the checkout away: the login service's binary is gone,
+// and only a relaunch (through the shim) reaches the new one. A daemon a TUI
+// session started is re-executed in place instead (#8), so it stays.
+func TestOnlyTheServiceLeavesWhenItsBinaryIsGone(t *testing.T) {
+	if !binaryGone(true, "") {
+		t.Error("service with its binary gone should leave for launchd to relaunch it")
+	}
+	if binaryGone(false, "") {
+		t.Error("a hook-started daemon must not leave: nothing would relaunch it")
+	}
+	if binaryGone(true, "123-456") {
+		t.Error("binary still there: nothing to do")
+	}
+}

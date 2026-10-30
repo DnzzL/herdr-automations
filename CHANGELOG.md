@@ -2,6 +2,13 @@
 
 What changed for someone using the plugin. Dates are release dates.
 
+## Unreleased
+
+- `service install` survives `herdr plugin update`. The service now runs the
+  `install-cli` shim when there is one, and leaves for launchd to relaunch it
+  when an update moves its binary away; it used to keep running the old build,
+  or point at a deleted file.
+
 ## v0.11.0 — 2026-10-30
 
 - **The Herdr desktop app.** `backend: hc` runs automations in herdr-core, where
