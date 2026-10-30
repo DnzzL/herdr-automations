@@ -189,7 +189,7 @@ func (a *Automation) validate(backend Backend) error {
 		return fmt.Errorf("%s: template requires backend: hc", a.Name)
 	}
 	if a.Template == "" && backend == BackendHC && !KindTakesPromptArg(a.Agent) {
-		return fmt.Errorf("%s: agent %q cannot take its prompt under backend: hc yet (claude, codex and pi can)", a.Name, a.Agent)
+		return fmt.Errorf("%s: agent %q cannot take its prompt under backend: hc yet (claude, codex, pi and copilot can)", a.Name, a.Agent)
 	}
 	if a.Workflow != "" && backend == BackendHC {
 		return fmt.Errorf("%s: workflow drives the Herdr TUI; it cannot run under backend: hc", a.Name)
@@ -227,21 +227,32 @@ var modelFlagKinds = map[string]bool{
 // KindAcceptsModel reports whether this agent kind understands `--model`.
 func KindAcceptsModel(kind string) bool { return modelFlagKinds[kind] }
 
-// promptArgKinds are the agent kinds the hc host can run: they take their
-// first message as a trailing argument, and they report their state to hc
-// (OSC 7501), without which a run can't be told done from stuck. Measured on
-// 2026-10-30: claude and pi report; opencode reports nothing; codex is
-// assumed from its CLI, not measured. Herdr's TUI watches agents' screens
-// itself, which is why it supports more of them.
-var promptArgKinds = map[string]bool{
-	"claude": true,
-	"codex":  true,
-	"pi":     true,
+// promptFlags are the agent kinds the hc host can run, and the flag each
+// puts in front of its first message ("" for a bare trailing argument). They
+// also report their state to hc (OSC 7501), without which a run can't be told
+// done from stuck. Measured on 2026-10-30: claude, pi and copilot report;
+// opencode reports nothing; codex is assumed from its CLI, not measured.
+// copilot needs -i: a bare argument is "Invalid command format", and -p would
+// exit after one answer. Herdr's TUI watches agents' screens itself, which is
+// why it supports more of them.
+var promptFlags = map[string]string{
+	"claude":  "",
+	"codex":   "",
+	"pi":      "",
+	"copilot": "-i",
 }
 
-// KindTakesPromptArg reports whether this agent kind takes its prompt as a
-// trailing argument.
-func KindTakesPromptArg(kind string) bool { return promptArgKinds[kind] }
+// KindTakesPromptArg reports whether this agent kind takes its prompt on its
+// command line.
+func KindTakesPromptArg(kind string) bool { _, ok := promptFlags[kind]; return ok }
+
+// PromptArgs is how this agent kind's command line carries its first message.
+func PromptArgs(kind, prompt string) []string {
+	if flag := promptFlags[kind]; flag != "" {
+		return []string{flag, prompt}
+	}
+	return []string{prompt}
+}
 
 // Dir is where automations.yaml lives.
 func Dir() string { return hostpath.ConfigDir() }

@@ -212,8 +212,10 @@ the link.
 
 Under `backend: hc`, a run needs an agent that takes its prompt as an argument and
 reports its state to herdr-core, or a finished run can't be told from a stuck one:
-`claude` and `pi` (measured), `codex` (assumed, untested). The form offers the ones
-installed. Other kinds are refused when the file loads; the TUI, which reads agents'
+`claude`, `pi` and `copilot` (measured), `codex` (assumed, untested). `copilot` gets its
+prompt through `-i`, and asks whether to trust a folder it has not seen: trust
+`~/.herdr/worktrees` (and any `root` repo) once, or a run waits on that question until
+it times out. The form offers the ones installed. Other kinds are refused when the file loads; the TUI, which reads agents'
 screens itself, runs them all. `workflow:` and `session:`
 belong to the TUI and are refused too. A daemon started by a TUI session still exits
 with the last one under `backend: herdr`; the login service never does.
