@@ -168,17 +168,28 @@ func TestTheDaemonStopsOnlyOnceNoSessionIsLeft(t *testing.T) {
 	}
 }
 
-// A plugin update moves the checkout away: the login service's binary is gone,
-// and only a relaunch (through the shim) reaches the new one. A daemon a TUI
-// session started is re-executed in place instead (#8), so it stays.
-func TestOnlyTheServiceLeavesWhenItsBinaryIsGone(t *testing.T) {
-	if !binaryGone(true, "") {
-		t.Error("service with its binary gone should leave for launchd to relaunch it")
+// A plugin update installs into a new checkout and keeps the old one, so the
+// login service keeps running the old build unless it notices. It leaves, and
+// launchd relaunches it through the shim onto the installed one. A daemon a
+// TUI session started is re-executed in place instead (#8), so it stays.
+func TestOnlyTheServiceLeavesForTheInstalledBinary(t *testing.T) {
+	const run, other = "/p/1/bin/herdr-automations", "/p/2/bin/herdr-automations"
+	cases := []struct {
+		name             string
+		standby          bool
+		stamp, installed string
+		want             bool
+	}{
+		{"service, update installed elsewhere", true, "1-2", other, true},
+		{"service, its binary is gone", true, "", other, true},
+		{"service, up to date", true, "1-2", run, false},
+		{"service, herdr did not answer", true, "1-2", "", false},
+		{"hook-started daemon, update elsewhere", false, "1-2", other, false},
+		{"hook-started daemon, binary gone", false, "", other, false},
 	}
-	if binaryGone(false, "") {
-		t.Error("a hook-started daemon must not leave: nothing would relaunch it")
-	}
-	if binaryGone(true, "123-456") {
-		t.Error("binary still there: nothing to do")
+	for _, c := range cases {
+		if got := shouldRelaunch(c.standby, c.stamp, run, c.installed); got != c.want {
+			t.Errorf("%s: got %v, want %v", c.name, got, c.want)
+		}
 	}
 }

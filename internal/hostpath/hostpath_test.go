@@ -133,3 +133,19 @@ func TestHCBinFindsTheAppInstallUnderABarePath(t *testing.T) {
 		t.Fatalf("HCBin() = %q, want %q", got, want)
 	}
 }
+
+// What `herdr plugin list --plugin <id> --json` answers, trimmed. The login
+// service compares the binary it runs with the one installed now.
+func TestInstalledBinaryReadsThePluginRoot(t *testing.T) {
+	raw := []byte(`{"id":"cli:plugin","result":{"plugins":[
+		{"plugin_id":"someone.else","plugin_root":"/x"},
+		{"plugin_id":"dnzzl.automations","plugin_root":"/p/77472-0/checkout","version":"0.11.2"}]}}`)
+	if got, want := installedBinary(raw), "/p/77472-0/checkout/bin/herdr-automations"; got != want {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+	for _, bad := range []string{``, `{}`, `not json`, `{"result":{"plugins":[{"plugin_id":"someone.else","plugin_root":"/x"}]}}`} {
+		if got := installedBinary([]byte(bad)); got != "" {
+			t.Errorf("%q: got %q, want nothing", bad, got)
+		}
+	}
+}

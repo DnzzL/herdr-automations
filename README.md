@@ -322,7 +322,7 @@ agent's own posture is Herdr's to describe.
 - **Opens no ports**, phones nothing home, and downloads nothing at runtime — the only network access is `herdr plugin install` fetching a checksum-verified release binary
 - **Raises a Herdr toast** on a failed run, a missed run, or a broken `automations.yaml` entry — in every running Herdr session: a panel inside the Herdr window, not an OS notification, and not sent anywhere
 - **`herdr plugin uninstall`** removes the plugin and leaves your config and history where they are
-- **With the app** — `service install` writes one file, `~/Library/LaunchAgents/dev.dnzzl.herdr-automations.plist` (or `~/.config/systemd/user/herdr-automations.service`), with your `PATH` in it so the scheduler finds `hc`, `git` and the agents. It runs the `install-cli` shim when there is one, so a plugin update, which moves the checkout, is picked up on relaunch. `service uninstall` removes it. Under `backend: hc` no Herdr toast exists for an outside process to raise, so failures are announced by the panel while a Herdr window is open
+- **With the app** — `service install` writes one file, `~/Library/LaunchAgents/dev.dnzzl.herdr-automations.plist` (or `~/.config/systemd/user/herdr-automations.service`), with your `PATH` in it so the scheduler finds `hc`, `git` and the agents. It runs the `install-cli` shim when there is one, and relaunches itself within 30 seconds of a `herdr plugin update`. `service uninstall` removes it. Under `backend: hc` no Herdr toast exists for an outside process to raise, so failures are announced by the panel while a Herdr window is open
 
 ## FAQ
 

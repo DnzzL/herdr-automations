@@ -2,6 +2,13 @@
 
 What changed for someone using the plugin. Dates are release dates.
 
+## Unreleased
+
+- The login service now actually follows `herdr plugin update`. An update
+  installs into a new folder and keeps the old one, so v0.11.1's check (the
+  binary disappearing) never fired. The service now asks Herdr where the plugin
+  is installed every 30 seconds, and relaunches onto it when that changed.
+
 ## v0.11.2 — 2026-10-30
 
 - A pi run under `backend: hc` that works longer than two minutes is no longer
