@@ -2,6 +2,12 @@
 
 What changed for someone using the plugin. Dates are release dates.
 
+## Unreleased
+
+- A pi run under `backend: hc` that works longer than two minutes is no longer
+  recorded as failed. pi counts its turn when it ends, not when it starts.
+- The panel's form offers only the supported agents installed on this machine.
+
 ## v0.11.1 — 2026-10-30
 
 - `service install` survives `herdr plugin update`. The service now runs the

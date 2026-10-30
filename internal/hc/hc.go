@@ -38,6 +38,10 @@ type Terminal struct {
 	// was closed in the app).
 	Reason   string `json:"reason"`
 	ExitCode *int   `json:"exit_code"`
+	// Status is what the agent last reported, nil when it never has.
+	Status *struct {
+		State string `json:"state"`
+	} `json:"status"`
 }
 
 func run(out any, args ...string) error {

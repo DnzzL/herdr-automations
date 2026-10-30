@@ -20,6 +20,7 @@ type fakeHC struct {
 	waits    []hc.Wait
 	term     hc.Terminal
 	runErr   error
+	delay    time.Duration // per Wait
 }
 
 func (f *fakeHC) Run(cwd string, labels map[string]string, argv []string) (string, error) {
@@ -28,6 +29,7 @@ func (f *fakeHC) Run(cwd string, labels map[string]string, argv []string) (strin
 }
 
 func (f *fakeHC) Wait(string, time.Duration) (hc.Wait, error) {
+	time.Sleep(f.delay)
 	if len(f.waits) == 0 {
 		return hc.Wait{Reason: "timeout"}, nil
 	}
@@ -126,6 +128,7 @@ func TestHCDo(t *testing.T) {
 		term    hc.Terminal
 		want    string // "" = success, "cancelled" = ErrCancelled, else a substring
 		timeout time.Duration
+		slow    bool // each wait takes longer than paneReady
 	}{
 		{name: "done", waits: []hc.Wait{{Ended: true, Reason: "status", Status: "done", Turn: 1}}},
 		{name: "idle after its turn", waits: []hc.Wait{{Ended: true, Reason: "status", Status: "idle", Turn: 1}}},
@@ -142,6 +145,13 @@ func TestHCDo(t *testing.T) {
 		{name: "agent exited", waits: []hc.Wait{{Ended: true, Reason: "exit", ExitCode: &code}},
 			term: hc.Terminal{State: "finished", Reason: "exited", ExitCode: &code}, want: "exited with code 2"},
 		{name: "agent error", waits: []hc.Wait{{Ended: true, Reason: "status", Status: "error", Turn: 1}}, want: "error"},
+		// pi counts its turn when the turn ends, Claude when it starts: working
+		// at turn 0 for longer than paneReady is pi on a long task, not a dialog.
+		{name: "pi working at turn 0, then done", waits: []hc.Wait{
+			{Ended: false, Reason: "timeout", Status: "working", Turn: 0},
+			{Ended: false, Reason: "timeout", Status: "working", Turn: 0},
+			{Ended: true, Reason: "status", Status: "done", Turn: 1},
+		}, slow: true},
 		// A trust dialog: no status at all, ever. Without a bound the run would
 		// hold its slot for the whole timeout.
 		{name: "never started", want: "never started working", timeout: time.Second},
@@ -151,7 +161,7 @@ func TestHCDo(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			f := &fakeHC{waits: c.waits, term: c.term}
+			f := &fakeHC{waits: c.waits, term: c.term, delay: map[bool]time.Duration{true: 40 * time.Millisecond}[c.slow]}
 			h := newHCTest(f)
 			if c.name == "still working at the deadline" {
 				h.knobs.paneReady = time.Hour

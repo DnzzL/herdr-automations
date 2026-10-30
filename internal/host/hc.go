@@ -92,7 +92,7 @@ func (h *hcHost) worktree(a config.Automation) (string, error) {
 func (h *hcHost) Do(s Session, a config.Automation, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
 	started := time.Now()
-	turn := 0
+	turn, working := 0, false
 	for {
 		remaining := time.Until(deadline)
 		if remaining <= 0 {
@@ -106,18 +106,21 @@ func (h *hcHost) Do(s Session, a config.Automation, timeout time.Duration) error
 			return ErrCancelled
 		}
 		turn = max(turn, w.Turn)
+		// Claude counts a turn when it starts, pi when it ends: having been
+		// seen at work is what says the prompt landed.
+		working = working || w.Status == "working" || w.Status == "blocked"
 		switch {
 		case w.Reason == "exit":
 			return h.exitOutcome(s)
 		case w.Reason == "status" && w.Status == "error":
 			return fmt.Errorf("the agent reported an error")
-		case w.Reason == "status" && turn > 0 && (w.Status == "done" || w.Status == "idle"):
+		case w.Reason == "status" && (turn > 0 || working) && (w.Status == "done" || w.Status == "idle"):
 			return nil
 		}
 		// No turn yet after this long: the agent is sitting on something only
 		// a person can answer, like Claude's trust dialog in a folder it has
 		// never seen. It reports no status there at all, not even blocked.
-		if turn == 0 && time.Since(started) > h.knobs.paneReady {
+		if turn == 0 && !working && time.Since(started) > h.knobs.paneReady && !h.reportsWork(s) {
 			return fmt.Errorf("the agent never started working; open %s and look for a dialog (trust prompt?)", s.PaneID)
 		}
 		if w.Ended {
@@ -126,6 +129,16 @@ func (h *hcHost) Do(s Session, a config.Automation, timeout time.Duration) error
 			time.Sleep(h.knobs.statusPoll)
 		}
 	}
+}
+
+// reportsWork asks the terminal itself: a wait that only checked in may not
+// carry the agent's state.
+func (h *hcHost) reportsWork(s Session) bool {
+	t, err := h.ops.Get(s.PaneID)
+	if err != nil || t.Status == nil {
+		return false
+	}
+	return t.Status.State == "working" || t.Status.State == "blocked"
 }
 
 // exitOutcome tells a run called off from one that crashed: closing the
