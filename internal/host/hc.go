@@ -28,7 +28,7 @@ type hcOps interface {
 }
 
 // NewHC returns the Host that runs automations in herdr-core, where the Herdr
-// desktop app shows them (ADR 0010).
+// desktop app shows them (ADR 0011).
 func NewHC() Host {
 	home, _ := os.UserHomeDir()
 	return &hcHost{ops: hcLive{}, home: home, knobs: defaultKnobs()}

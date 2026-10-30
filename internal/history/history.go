@@ -59,14 +59,17 @@ func NewID(automation, kind string) string {
 }
 
 type Record struct {
-	RunID       string    `json:"run_id"`
-	Automation  string    `json:"automation"`
-	Status      Status    `json:"status"`
-	At          time.Time `json:"at"`
-	Trigger     Trigger   `json:"trigger,omitempty"`
-	WorkspaceID string    `json:"workspace_id,omitempty"`
-	PaneID      string    `json:"pane_id,omitempty"`
-	Error       string    `json:"error,omitempty"`
+	RunID      string    `json:"run_id"`
+	Automation string    `json:"automation"`
+	Status     Status    `json:"status"`
+	At         time.Time `json:"at"`
+	Trigger    Trigger   `json:"trigger,omitempty"`
+	// Session is the Herdr session WorkspaceID and PaneID belong to; IDs are
+	// only meaningful inside it. Empty on runs recorded before ADR 0010.
+	Session     string `json:"session,omitempty"`
+	WorkspaceID string `json:"workspace_id,omitempty"`
+	PaneID      string `json:"pane_id,omitempty"`
+	Error       string `json:"error,omitempty"`
 	// Seen marks a finished run as opened, for the panel's inbox. On disk it
 	// is a copy of the run's latest record with the flag set; Runs folds it
 	// into the run rather than letting it stand in for the status.

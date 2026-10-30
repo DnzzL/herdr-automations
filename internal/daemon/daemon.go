@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/DnzzL/herdr-automations/internal/config"
+	"github.com/DnzzL/herdr-automations/internal/herdr"
 	"github.com/DnzzL/herdr-automations/internal/history"
 	"github.com/DnzzL/herdr-automations/internal/host"
 	"github.com/DnzzL/herdr-automations/internal/notify"
@@ -34,7 +35,7 @@ func Run(standby bool) error {
 	log.SetPrefix("[herdr-automations] ")
 
 	release, err := acquireLock()
-	for err != nil && standby && errors.Is(err, errLocked) {
+	for err != nil && standby && errors.Is(err, ErrAlreadyRunning) {
 		log.Printf("%v; standing by", err)
 		time.Sleep(tickInterval)
 		release, err = acquireLock()
@@ -46,9 +47,15 @@ func Run(standby bool) error {
 
 	log.Printf("daemon starting, config=%s", config.Path())
 	state := loadState()
-	binary := binaryStamp()
+	// Resolve the path once: a reinstall moves the running image away, but the
+	// new build lands here.
+	exe, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	binary := binaryStamp(exe)
 	// The backend is settled once: a run must be awaited where it was
-	// started. Editing it in the file restarts the daemon (see evaluate).
+	// started. Editing it in the file restarts the daemon (see the loop).
 	backend := config.BackendHerdr
 	if cfg, err := config.Load(); err == nil {
 		backend = cfg.Backend
@@ -56,7 +63,7 @@ func Run(standby bool) error {
 	resolved := host.Resolve(backend)
 	log.Printf("backend %s (%s)", backend, resolved)
 	// Under hc no outside process can raise a toast in the app; the panel
-	// announces failures from history instead (ADR 0010).
+	// announces failures from history instead (ADR 0011).
 	var n *notify.Notifier
 	if resolved == config.BackendHerdr {
 		n = notify.New()
@@ -73,11 +80,19 @@ func Run(standby bool) error {
 	for {
 		select {
 		case <-tick.C:
-			if stamp := binaryStamp(); stamp != binary && stamp != "" {
-				restart(release, runs, "binary changed")
+			// A run in flight records how it ended first, as in restart. Only a
+			// daemon a TUI session started, running TUI automations, ends with
+			// the last session (ADR 0010): hc needs no session, and the login
+			// service owns its own lifetime (launchd would only relaunch it).
+			if !standby && resolved == config.BackendHerdr && !runs.Busy() && noSessionLeft(herdr.Client{}.RunningSessions) {
+				log.Printf("no Herdr session is running, shutting down")
+				return nil
+			}
+			if stamp := binaryStamp(exe); stamp != binary && stamp != "" {
+				restart(runs, exe, "binary changed")
 			}
 			if cfg, err := config.Load(); err == nil && cfg.Backend != backend {
-				restart(release, runs, "backend changed")
+				restart(runs, exe, "backend changed")
 			}
 			evaluate(state, runs, n)
 		case s := <-sigs:
@@ -85,6 +100,17 @@ func Run(standby bool) error {
 			return nil
 		}
 	}
+}
+
+// noSessionLeft decides when the daemon is done. It outlives the session that
+// started it — every run names its own, and a session already up never re-runs
+// its startup hook, so dying with the first would leave the others without a
+// scheduler. With no session at all there is nothing left to run in, and the
+// next one to start brings a fresh daemon. A Herdr that cannot answer is not
+// one that is gone.
+func noSessionLeft(list func() ([]string, error)) bool {
+	sessions, err := list()
+	return err == nil && len(sessions) == 0
 }
 
 // evaluate asks the schedule what should happen now, and does it.
@@ -210,27 +236,22 @@ func recordMissed(name string, count int, why string) {
 
 // restart re-executes the daemon so a plugin upgrade takes effect without
 // waiting for the Herdr server to be restarted.
-func restart(release func(), runs *runner.Runner, why string) {
+// execve is syscall.Exec, swappable so a test can make the re-exec fail.
+var execve = syscall.Exec
+
+func restart(runs *runner.Runner, exe, why string) {
 	if runs.Busy() {
 		return // let the in-flight run finish; we'll notice again next tick
 	}
-	exe, err := os.Executable()
-	if err != nil {
-		log.Printf("cannot locate the new binary: %v", err)
-		return
-	}
 	log.Printf("%s, re-executing %s", why, exe)
-	release() // the new process takes the lock
-	if err := syscall.Exec(exe, os.Args, os.Environ()); err != nil {
+	// No release here: the lock's descriptor is close-on-exec, so a successful
+	// exec drops it for the new image, and a failed one leaves it held.
+	if err := execve(exe, os.Args, os.Environ()); err != nil {
 		log.Printf("re-exec failed, continuing with the old build: %v", err)
 	}
 }
 
-func binaryStamp() string {
-	exe, err := os.Executable()
-	if err != nil {
-		return ""
-	}
+func binaryStamp(exe string) string {
 	st, err := os.Stat(exe)
 	if err != nil {
 		return ""

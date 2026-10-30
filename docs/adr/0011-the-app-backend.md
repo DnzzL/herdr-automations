@@ -1,4 +1,4 @@
-# ADR 0010 — the Herdr app is a second host, and the panel only talks to the CLI
+# ADR 0011 — the Herdr app is a second host, and the panel only talks to the CLI
 
 **Status**: accepted · **Date**: 2026-10-30
 
@@ -37,7 +37,11 @@ the window closed.
    `herdr-automations … --json` through `exec` and watches the config folder.
    It never parses YAML or cron, and never writes the files itself. Read state
    for the inbox is a `read` event in `history.jsonl`.
-5. **Under hc, failures are announced by the panel.** The app has no
+5. **Sessions are a TUI notion.** `session:` (ADR 0010) is refused under
+   `backend: hc`. The rule that the daemon exits with the last session applies
+   only to a daemon a TUI session started for `backend: herdr`: hc needs no
+   session, and the login service owns its lifetime (launchd would relaunch it).
+6. **Under hc, failures are announced by the panel.** The app has no
    toast an outside process can raise. `notify` becomes a no-op on the hc host;
    the panel toasts new `failed` / `missed` entries (ADR 0007's table still
    decides which).

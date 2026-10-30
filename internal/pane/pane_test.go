@@ -209,3 +209,23 @@ func TestANoticeIsFlattenedToOneLine(t *testing.T) {
 		t.Errorf("notice = %q, want it on one line", m.notice)
 	}
 }
+
+func TestJumpingToARunInAnotherSessionSaysWhereItIs(t *testing.T) {
+	m := board(t, `automations:
+  - {name: fine, cron: "@daily", repo: /x, prompt: p}
+`)
+	if err := history.Append(history.Record{RunID: "fine-1", Automation: "fine",
+		Status: history.StatusDone, Session: "automations", WorkspaceID: "w7"}); err != nil {
+		t.Fatal(err)
+	}
+	m = send(t, m, refreshMsg{})
+	m.here = "default"
+
+	m, cmd := press(t, m, "enter")
+	if cmd != nil {
+		t.Fatal("the board quit, as if it had jumped somewhere")
+	}
+	if !strings.Contains(m.notice, "herdr session attach automations") || strings.Contains(m.notice, "closed") {
+		t.Fatalf("notice = %q, want where to attach, not that it was closed", m.notice)
+	}
+}

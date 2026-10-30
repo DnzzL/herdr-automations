@@ -20,7 +20,12 @@ it's `missed`.
 the window) or `manual` (`r` on the board, or `herdr-automations run`).
 
 **Session** — a provisioned workspace plus the pane its agent lives in. What
-`host.Provision` hands back. The place a run happens.
+`host.Provision` hands back. The place a run happens. Predates Herdr sessions;
+in prose, prefer **Herdr session** for the other one.
+
+**Herdr session** — Herdr's: a named server with its own socket, several per
+machine. Workspace and pane IDs mean something only inside one. `session:` in
+`automations.yaml` names a Herdr session, never the term above.
 
 **Work** — what a run actually does in its session. Two kinds: an *agent* taking
 a prompt, or an *hwf delegation* handing off to herdr-workflows. Both answer the

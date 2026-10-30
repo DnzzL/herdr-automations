@@ -1,5 +1,5 @@
 // Package api is what `--json` prints: the shapes the Herdr app panel reads.
-// The panel never parses automations.yaml or history.jsonl itself (ADR 0010),
+// The panel never parses automations.yaml or history.jsonl itself (ADR 0011),
 // so these structs are the contract — rename a field here and the panel breaks.
 package api
 

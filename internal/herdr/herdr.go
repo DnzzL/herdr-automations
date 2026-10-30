@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -19,17 +20,37 @@ import (
 	"github.com/DnzzL/herdr-automations/internal/hostpath"
 )
 
-// Client talks to the herdr CLI. It holds nothing: the zero value is ready.
-type Client struct{}
-
-// run executes a herdr subcommand and decodes the socket-API JSON envelope
-// ({"id": ..., "result": {...}}) into out when out is non-nil.
-func run(out any, args ...string) error {
-	return runCtx(context.Background(), out, args...)
+// Client talks to the herdr CLI. The zero value is ready, and talks to
+// whichever session the environment points at — what every caller wanted
+// before a run could name its own (ADR 0010).
+type Client struct {
+	// Session, when set, is the Herdr session every call targets.
+	Session string
 }
 
-// runCtx is run with a context, so a caller that cannot afford to block
-// forever — a toast, not a run step — can bound it.
+// argv puts --session ahead of the subcommand, where herdr's CLI reads it. It
+// outranks HERDR_SOCKET_PATH, so a daemon started by one session can still
+// reach another.
+func (c Client) argv(args []string) []string {
+	if c.Session == "" {
+		return args
+	}
+	return append([]string{"--session", c.Session}, args...)
+}
+
+// run executes a herdr subcommand against the client's session.
+func (c Client) run(out any, args ...string) error {
+	return runCtx(context.Background(), out, c.argv(args)...)
+}
+
+func (c Client) runCtx(ctx context.Context, out any, args ...string) error {
+	return runCtx(ctx, out, c.argv(args)...)
+}
+
+// runCtx executes a herdr subcommand and decodes the socket-API JSON envelope
+// ({"id": ..., "result": {...}}) into out when out is non-nil. It takes a
+// context so a caller that cannot afford to block forever — a toast, not a run
+// step — can bound it.
 func runCtx(ctx context.Context, out any, args ...string) error {
 	cmd := exec.CommandContext(ctx, hostpath.Bin(), args...)
 	var stdout, stderr bytes.Buffer
@@ -88,15 +109,21 @@ func HasCode(err error, code string) bool {
 // which says only that the run failed — not that it exited 1, was killed, or
 // was never on PATH.
 func newAPIError(args []string, stdout []byte, stderr string, runErr error) error {
-	cmd := strings.Join(args[:min(2, len(args))], " ")
-	var envelope struct {
-		Error struct {
-			Code    string `json:"code"`
-			Message string `json:"message"`
-		} `json:"error"`
+	if len(args) >= 2 && args[0] == "--session" {
+		args = args[2:] // name the command, not where it was sent
 	}
-	if json.Unmarshal(stdout, &envelope) == nil && envelope.Error.Code != "" {
-		return &APIError{Command: cmd, Code: envelope.Error.Code, Message: envelope.Error.Message}
+	cmd := strings.Join(args[:min(2, len(args))], " ")
+	// herdr ≥ 0.8.0 prints the error envelope on stderr; older builds used stdout.
+	for _, out := range [][]byte{stdout, []byte(stderr)} {
+		var envelope struct {
+			Error struct {
+				Code    string `json:"code"`
+				Message string `json:"message"`
+			} `json:"error"`
+		}
+		if json.Unmarshal(out, &envelope) == nil && envelope.Error.Code != "" {
+			return &APIError{Command: cmd, Code: envelope.Error.Code, Message: envelope.Error.Message}
+		}
 	}
 	msg := strings.TrimSpace(stderr)
 	if msg == "" {
@@ -128,9 +155,9 @@ func (r createResult) ids(what string) (string, string, error) {
 
 // WorktreeCreate provisions a fresh git worktree workspace off repo and
 // returns its workspace and root pane IDs.
-func (Client) WorktreeCreate(repo, branch, label string) (workspaceID, paneID string, err error) {
+func (c Client) WorktreeCreate(repo, branch, label string) (workspaceID, paneID string, err error) {
 	var res createResult
-	err = run(&res, "worktree", "create",
+	err = c.run(&res, "worktree", "create",
 		"--cwd", repo, "--branch", branch, "--label", label, "--no-focus")
 	if err != nil {
 		return "", "", err
@@ -139,9 +166,9 @@ func (Client) WorktreeCreate(repo, branch, label string) (workspaceID, paneID st
 }
 
 // WorkspaceCreate opens a workspace directly on a directory (root mode).
-func (Client) WorkspaceCreate(cwd, label string) (workspaceID, paneID string, err error) {
+func (c Client) WorkspaceCreate(cwd, label string) (workspaceID, paneID string, err error) {
 	var res createResult
-	err = run(&res, "workspace", "create", "--cwd", cwd, "--label", label, "--no-focus")
+	err = c.run(&res, "workspace", "create", "--cwd", cwd, "--label", label, "--no-focus")
 	if err != nil {
 		return "", "", err
 	}
@@ -149,9 +176,9 @@ func (Client) WorkspaceCreate(cwd, label string) (workspaceID, paneID string, er
 }
 
 // TabCreate gives a run its own shell without creating a workspace.
-func (Client) TabCreate(workspaceID, cwd, label string) (string, error) {
+func (c Client) TabCreate(workspaceID, cwd, label string) (string, error) {
 	var res createResult
-	if err := run(&res, "tab", "create", "--workspace", workspaceID,
+	if err := c.run(&res, "tab", "create", "--workspace", workspaceID,
 		"--cwd", cwd, "--label", label, "--no-focus"); err != nil {
 		return "", err
 	}
@@ -173,11 +200,11 @@ type Worktree struct {
 
 // WorktreeList returns every worktree Herdr knows about for repo, including
 // the source checkout itself.
-func (Client) WorktreeList(repo string) ([]Worktree, error) {
+func (c Client) WorktreeList(repo string) ([]Worktree, error) {
 	var res struct {
 		Worktrees []Worktree `json:"worktrees"`
 	}
-	if err := run(&res, "worktree", "list", "--cwd", repo); err != nil {
+	if err := c.run(&res, "worktree", "list", "--cwd", repo); err != nil {
 		return nil, err
 	}
 	return res.Worktrees, nil
@@ -185,13 +212,13 @@ func (Client) WorktreeList(repo string) ([]Worktree, error) {
 
 // AgentStart launches an interactive agent in a pane sitting at a shell
 // prompt. extraArgs are forwarded to the agent executable (e.g. --mcp-config).
-func (Client) AgentStart(name, kind, paneID string, extraArgs []string) error {
+func (c Client) AgentStart(name, kind, paneID string, extraArgs []string) error {
 	args := []string{"agent", "start", name, "--kind", kind, "--pane", paneID}
 	if len(extraArgs) > 0 {
 		args = append(args, "--")
 		args = append(args, extraArgs...)
 	}
-	return run(nil, args...)
+	return c.run(nil, args...)
 }
 
 // CodePaneBusy is herdr's refusal to start an agent in a pane that is not
@@ -219,19 +246,19 @@ const CodeStalled = "agent_prompt_stalled"
 // AgentSubmit types a prompt into the agent and asks herdr to confirm the
 // agent reacted. A CodeStalled error is inconclusive; callers should check the
 // status before giving up.
-func (Client) AgentSubmit(target, text string) error {
-	return run(nil, "agent", "prompt", target, text, "--wait", "--until", "working",
+func (c Client) AgentSubmit(target, text string) error {
+	return c.run(nil, "agent", "prompt", target, text, "--wait", "--until", "working",
 		"--timeout", "30000")
 }
 
 // AgentStatus reports the agent's current state: idle, working, blocked…
-func (Client) AgentStatus(target string) (string, error) {
+func (c Client) AgentStatus(target string) (string, error) {
 	var res struct {
 		Agent struct {
 			AgentStatus string `json:"agent_status"`
 		} `json:"agent"`
 	}
-	if err := run(&res, "agent", "get", target); err != nil {
+	if err := c.run(&res, "agent", "get", target); err != nil {
 		return "", err
 	}
 	return res.Agent.AgentStatus, nil
@@ -239,13 +266,13 @@ func (Client) AgentStatus(target string) (string, error) {
 
 // AgentSubmitPending presses Enter on the pane, submitting anything already
 // sitting in the composer. Harmless when the composer is empty.
-func (Client) AgentSubmitPending(paneID string) error {
-	return run(nil, "pane", "send-keys", paneID, "enter")
+func (c Client) AgentSubmitPending(paneID string) error {
+	return c.run(nil, "pane", "send-keys", paneID, "enter")
 }
 
 // AgentWait blocks until the agent settles (idle, done or blocked).
-func (Client) AgentWait(target string, timeout time.Duration) error {
-	return run(nil, "agent", "wait", target,
+func (c Client) AgentWait(target string, timeout time.Duration) error {
+	return c.run(nil, "agent", "wait", target,
 		"--timeout", fmt.Sprintf("%d", timeout.Milliseconds()))
 }
 
@@ -255,9 +282,9 @@ var ErrGone = errors.New("workspace already closed")
 
 // Focus brings a run's workspace to the front, then its agent pane when one
 // is known — the "jump to what this automation did" move.
-func (Client) Focus(workspaceID, paneID string) error {
+func (c Client) Focus(workspaceID, paneID string) error {
 	if workspaceID != "" {
-		if err := run(nil, "workspace", "focus", workspaceID); err != nil {
+		if err := c.run(nil, "workspace", "focus", workspaceID); err != nil {
 			if HasCode(err, CodeWorkspaceGone) {
 				return ErrGone
 			}
@@ -266,7 +293,7 @@ func (Client) Focus(workspaceID, paneID string) error {
 	}
 	if paneID != "" {
 		// Best-effort: the pane may be gone while the workspace lives on.
-		_ = run(nil, "agent", "focus", paneID)
+		_ = c.run(nil, "agent", "focus", paneID)
 	}
 	return nil
 }
@@ -303,23 +330,23 @@ func notificationArgs(title, body string, sound Sound) []string {
 
 // NotificationShow raises an in-session Herdr toast. In-session is the whole
 // caveat: a panel in the Herdr window, not an OS notification.
-func (Client) NotificationShow(title, body string, sound Sound) error {
+func (c Client) NotificationShow(title, body string, sound Sound) error {
 	ctx, cancel := context.WithTimeout(context.Background(), notificationTimeout)
 	defer cancel()
-	return runCtx(ctx, nil, notificationArgs(title, body, sound)...)
+	return c.runCtx(ctx, nil, notificationArgs(title, body, sound)...)
 }
 
 // PaneRun executes a shell command in a pane (used to delegate to hwf).
-func (Client) PaneRun(paneID string, command ...string) error {
-	return run(nil, append([]string{"pane", "run", paneID}, command...)...)
+func (c Client) PaneRun(paneID string, command ...string) error {
+	return c.run(nil, append([]string{"pane", "run", paneID}, command...)...)
 }
 
 // PaneRead returns the pane's recent terminal output. A pane is the only
 // channel a delegated command has, so this is how its result gets read back.
 // Unlike the rest of the API this one prints the screen, not a JSON envelope.
-func (Client) PaneRead(paneID string, lines int) (string, error) {
-	cmd := exec.Command(hostpath.Bin(), "pane", "read", paneID,
-		"--source", "recent", "--lines", fmt.Sprintf("%d", lines), "--format", "text")
+func (c Client) PaneRead(paneID string, lines int) (string, error) {
+	cmd := exec.Command(hostpath.Bin(), c.argv([]string{"pane", "read", paneID,
+		"--source", "recent", "--lines", fmt.Sprintf("%d", lines), "--format", "text"})...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -327,4 +354,63 @@ func (Client) PaneRead(paneID string, lines int) (string, error) {
 		return "", newAPIError([]string{"pane", "read"}, stdout.Bytes(), stderr.String(), err)
 	}
 	return stdout.String(), nil
+}
+
+// sessionInfo is one entry of `herdr session list --json`.
+type sessionInfo struct {
+	Name       string `json:"name"`
+	Default    bool   `json:"default"`
+	Running    bool   `json:"running"`
+	SocketPath string `json:"socket_path"`
+}
+
+// sessions lists every Herdr session on the machine. It never carries
+// --session: the list is the machine's, not one session's.
+func sessions() ([]sessionInfo, error) {
+	var res struct {
+		Sessions []sessionInfo `json:"sessions"`
+	}
+	if err := runCtx(context.Background(), &res, "session", "list", "--json"); err != nil {
+		return nil, err
+	}
+	return res.Sessions, nil
+}
+
+// RunningSessions names the sessions whose server is up.
+func (Client) RunningSessions() ([]string, error) {
+	all, err := sessions()
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	for _, s := range all {
+		if s.Running {
+			out = append(out, s.Name)
+		}
+	}
+	return out, nil
+}
+
+// CurrentSession names the session this client's calls land in: its own when
+// bound, otherwise the one whose socket the environment points at, otherwise
+// the default — the same resolution herdr's CLI makes. Empty when Herdr cannot
+// say, which callers read as "unknown", never as a session.
+func (c Client) CurrentSession() string {
+	if c.Session != "" {
+		return c.Session
+	}
+	if s := os.Getenv("HERDR_SESSION"); s != "" {
+		return s
+	}
+	all, err := sessions()
+	if err != nil {
+		return ""
+	}
+	socket := os.Getenv("HERDR_SOCKET_PATH")
+	for _, s := range all {
+		if (socket != "" && s.SocketPath == socket) || (socket == "" && s.Default) {
+			return s.Name
+		}
+	}
+	return ""
 }

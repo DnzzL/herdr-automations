@@ -18,6 +18,9 @@ fits before you write it.
 
 ## Working on it
 
+`devenv shell` gives you the pinned Go and the demo-recording tools; `devenv test`
+runs the same checks as CI.
+
 ```bash
 go build -o bin/herdr-automations . && go test ./...
 go vet ./... && gofmt -l .          # both must be clean; CI enforces them

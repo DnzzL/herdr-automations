@@ -49,9 +49,9 @@ a Friday digest — deserve better than you retyping the same prompt every morni
 - **Agent-agnostic** — anything `herdr agent start` supports: `claude`, `codex`, `opencode`, `gemini`, `cursor`, …
 - **MCP attach** — `mcp_config: path.json` hands the agent its MCP servers (GitHub, Slack, your DB…)
 - **Full run history** — append-only JSONL: `scheduled → running → done | failed | skipped | missed`, with workspace and pane IDs to jump back into
-- **Self-updating daemon** — it re-executes itself when the plugin binary changes, and a PID lock keeps a second scheduler from double-firing everything
+- **Self-updating daemon** — it re-executes itself when the plugin binary changes, and a file lock keeps a second scheduler from double-firing everything
 - **Live board** — an overlay pane inside Herdr: next run, last status, `r` to run now, `enter` to jump straight into the workspace a run created
-- **Agents can self-schedule** — a bundled [skill](skills/creating-automations/SKILL.md) teaches Claude Code the format: say *"triage my errors every morning"* and the agent writes the entry itself
+- **Agents can self-schedule** — a bundled [skill](skills/creating-automations/SKILL.md) teaches coding agents the format: say *"triage my errors every morning"* and the agent writes the entry itself
 - **Herdr desktop app** — `backend: hc` runs automations in the [app](#in-the-herdr-desktop-app), with a panel beside Files and Changes: an inbox of finished runs, run now, pause, and a form with the next runs previewed
 - **A failure finds you** — a run that fails, a run that's missed, or a broken entry raises a Herdr toast; everything else stays quiet
 
@@ -71,11 +71,22 @@ schedules, accumulating worktrees — it reports and waits for you.
 
 ```bash
 herdr plugin install DnzzL/herdr-automations   # prebuilt binary, no toolchain needed
+herdr plugin action invoke install-cli --plugin dnzzl.automations   # shim in ~/.local/bin
 herdr-automations add                          # wizard: validates cron, previews next 3 runs
 ```
 
 Prebuilt for macOS and Linux (arm64/amd64), checksum-verified at install; anything
 else builds from source and needs Go.
+
+Herdr doesn't put plugin binaries on `PATH`, so `install-cli` writes a small
+`herdr-automations` shim that asks Herdr where the plugin lives on every call:
+`herdr plugin update` keeps it working. The action runs in the background and
+prints nothing; if `herdr-automations` is then not found, add `~/.local/bin` to
+your `PATH`. To put the shim in another directory:
+
+```bash
+"$(herdr plugin list --plugin dnzzl.automations --json | sed -n 's/.*"plugin_root":"\([^"]*\)".*/\1/p')"/bin/herdr-automations install-cli ~/bin
+```
 
 **Three ways to add an automation**, all writing the same file:
 
@@ -100,11 +111,12 @@ herdr-automations cleanup         # drop the run worktrees whose work already la
 
 ### Let your agent do the scheduling
 
-The plugin ships a skill that teaches coding agents this file format. Agents only
-discover skills under `~/.claude/skills`, so install it once:
+The plugin ships a skill that teaches coding agents this file format. Install it
+once with [`npx skills`](https://github.com/vercel-labs/skills), which links it
+into every agent it finds (Claude Code, Codex, OpenCode, …):
 
 ```bash
-herdr-automations install-skill      # symlinks into ~/.claude/skills
+npx skills add DnzzL/herdr-automations
 ```
 
 Then, in any new agent session, plain language is enough:
@@ -115,8 +127,8 @@ Then, in any new agent session, plain language is enough:
 
 > *"Stop the flaky-hunt automation for now."*
 
-The agent writes the YAML entry, and the daemon picks it up within 30 seconds. It's
-a symlink, so plugin upgrades update the skill too.
+The agent writes the YAML entry, and the daemon picks it up within 30 seconds. The
+skill is a copy: after upgrading the plugin, run `npx skills update` to match.
 
 ### The board, inside Herdr
 
@@ -193,9 +205,14 @@ The panel needs a slot in your layout: clone the shipped `main` layout and `tabs
 add an `automations` block to the `panel-body` stack, and a button for it in the tab bar.
 Your agent can do it from [`~/.config/herdr-app/AGENTS.md`](https://herdr.dev/mods).
 
+With the TUI plugin installed too, `install-cli` (above) already puts the CLI where the
+panel finds it; skip the `ln -s`. Without the TUI the shim has no Herdr to ask, hence
+the link.
+
 Under `backend: hc`, agents take their prompt as an argument, which `claude`, `codex`
-and `pi` do; other kinds are refused when the file loads. `workflow:` entries drive the
-TUI and are refused too.
+and `pi` do; other kinds are refused when the file loads. `workflow:` and `session:`
+belong to the TUI and are refused too. A daemon started by a TUI session still exits
+with the last one under `backend: herdr`; the login service never does.
 
 ## How a run works
 
@@ -221,6 +238,7 @@ automations:
     cron: "0 9 * * 1-5"           # 5-field crontab, or @daily / @hourly / @weekly
     repo: ~/Projects/myapp
     workspace: worktree           # worktree (default) | root | existing
+    session: automations          # optional Herdr session the run happens in
     agent: claude                 # any `herdr agent start --kind`
     model: sonnet                 # optional → --model; kinds without the flag are caught on load
     template: reviewer            # hc only, instead of agent + model: an hc template, prompt as its task
@@ -256,10 +274,37 @@ remain open for review; each run gets a distinct agent name.
 
 Like `root`, this mode works directly in `repo` and creates no Git worktree. Runs
 sharing a directory can see each other's file changes. `workspace_id` is required
-only for `existing` mode and belongs to the Herdr session running the daemon. If
+only for `existing` mode and belongs to the automation's Herdr session. If
 you close that workspace, runs fail until you update the ID; the plugin does not
 create a replacement — see [ADR 0009](docs/adr/0009-a-run-may-share-a-workspace.md).
 The `add` wizard also offers this mode.
+
+### Run in a dedicated Herdr session
+
+Keep cron runs out of the sessions you work in by naming one:
+
+```yaml
+automations:
+  - name: issue-triage
+    cron: "0 9 * * 1-5"
+    repo: ~/Projects/myapp
+    session: automations
+    prompt: "Triage new GitHub issues."
+```
+
+Every run of that automation, from the cron, `r` on the board, or `run`, is
+provisioned in `automations`. Without `session:`, a run lands where it is
+triggered from: the board's or shell's session, or for the cron, the session
+that started the daemon. The plugin never starts a session. Start it yourself
+(`herdr --session automations server` runs it headless), and a run aimed at a
+stopped one fails with Herdr's own error. `list` names the automations whose
+session is not running.
+
+One scheduler serves every session on the machine. It outlives the session that
+started it and stops once no session is running. Failure toasts appear in every
+running session, so a dedicated one cannot swallow them. `enter` on the board
+jumps only within its own session. For a run elsewhere, it tells you which
+session to attach — see [ADR 0010](docs/adr/0010-the-daemon-belongs-to-no-session.md).
 
 ## What this does to your machine
 
@@ -271,7 +316,7 @@ agent's own posture is Herdr's to describe.
 - **Writes to two places** — the plugin config dir (`herdr plugin config-dir dnzzl.automations`) and `~/.local/state/herdr/plugins/dnzzl.automations` for the run log. Nothing else on disk is touched by the plugin itself
 - **Creates git worktrees and branches** in the repos you name, `auto/<name>-<timestamp>`. It never removes one on its own — `herdr-automations cleanup` is the only thing that deletes, it asks first, and it only touches `auto/` branches already contained in your default branch
 - **Opens no ports**, phones nothing home, and downloads nothing at runtime — the only network access is `herdr plugin install` fetching a checksum-verified release binary
-- **Raises a Herdr toast** on a failed run, a missed run, or a broken `automations.yaml` entry — in-session only: a panel inside the Herdr window, not an OS notification, and not sent anywhere
+- **Raises a Herdr toast** on a failed run, a missed run, or a broken `automations.yaml` entry — in every running Herdr session: a panel inside the Herdr window, not an OS notification, and not sent anywhere
 - **`herdr plugin uninstall`** removes the plugin and leaves your config and history where they are
 - **With the app** — `service install` writes one file, `~/Library/LaunchAgents/dev.dnzzl.herdr-automations.plist` (or `~/.config/systemd/user/herdr-automations.service`), with your `PATH` in it so the scheduler finds `hc`, `git` and the agents. `service uninstall` removes it. Under `backend: hc` no Herdr toast exists for an outside process to raise, so failures are announced by the panel while a Herdr window is open
 
@@ -345,7 +390,7 @@ scripts/dev-app.sh         # copy the panel into the app (a symlink is not reloa
 ```
 
 Design decisions live in [`docs/adr/`](docs/adr/); the app backend is
-[ADR 0010](docs/adr/0010-the-app-backend.md).
+[ADR 0011](docs/adr/0011-the-app-backend.md).
 
 ## Known gaps
 

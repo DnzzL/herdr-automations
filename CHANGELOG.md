@@ -18,7 +18,56 @@ What changed for someone using the plugin. Dates are release dates.
 - `template:` (hc only) runs an hc template with the prompt as its task.
 - `--json` on `list` and `history`, plus `put`, `rm`, `seen` and `run --bg`:
   what the panel calls.
-- `go test` no longer writes test runs into your real run history.
+
+## v0.10.0 — 2026-10-20
+
+- `herdr-automations` works from a shell after install. Run
+  `herdr plugin action invoke install-cli --plugin dnzzl.automations` once, or
+  `herdr-automations install-cli <dir>` for another directory. The shim follows
+  plugin updates.
+- `install-skill` is gone. Install the agent skill with
+  `npx skills add DnzzL/herdr-automations`, which reaches Codex, OpenCode and
+  other agents, not only Claude Code.
+
+## v0.9.0 — 2026-10-19
+
+- `session: <name>` sends an automation's runs to that Herdr session, whether
+  they come from the cron, `r` on the board, or `run`. Keep a dedicated session
+  for automations, out of the ones you work in. Without the key, nothing
+  changes. A run aimed at a stopped session fails with Herdr's error, and
+  `list` names the automations whose session is not running.
+- Stopping the Herdr session that started the daemon no longer leaves a
+  scheduler behind that fails every run while blocking other sessions from
+  starting a new one. The daemon now serves every session and stops once none
+  is running.
+- Other sessions' startup hooks no longer show up as `failed` in
+  `herdr plugin log`: one daemon per machine is expected, and they now exit
+  cleanly and say which one is serving.
+- Failure toasts appear in every running Herdr session, not only the daemon's.
+- `enter` on the board no longer says a run's workspace "was closed" when it is
+  open in another session. It says which session to attach.
+
+## v0.8.2 — 2026-10-08
+
+- Updating the plugin with `herdr plugin install` takes effect again without a
+  Herdr server restart. The installer moves the old checkout away and deletes
+  it, and the daemon was watching that deleted copy, so it never noticed the new
+  build. It now watches the path it started from.
+
+## v0.8.1 — 2026-10-07
+
+- A Herdr server restart can no longer stop every automation. A daemon killed
+  with the server leaves `daemon.pid` behind, and the next one refused to start
+  whenever that PID had since gone to some other process of yours. Herdr doesn't
+  show startup output, so nothing said so. The daemon now locks the file instead
+  of trusting the number in it, and the lock goes with the daemon however it
+  exits.
+- A daemon that fails to restart on a plugin update keeps its lock, so a second
+  scheduler can no longer start beside it and fire everything twice.
+- Runs recover again from Herdr's transient errors: an agent pane whose shell
+  is not ready yet, a prompt that stalls, an agent or workspace that went away.
+  Herdr 0.8.0 and later report errors on stderr, which the plugin did not read,
+  so every wait-and-retry was skipped and the run failed instantly.
 
 ## v0.8.0 — 2026-09-14
 
