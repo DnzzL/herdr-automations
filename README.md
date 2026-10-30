@@ -203,7 +203,8 @@ cp -R app/mods/automations ~/.config/herdr-app/mods/     # the panel
 The panel needs a slot in your layout: clone the shipped `main` layout and `tabs` mod
 (`herdr-app do layout.clone --name main --as main-plus`, then `mod.clone` for `tabs`),
 add an `automations` block to the `panel-body` stack, and a button for it in the tab bar.
-Your agent can do it from [`~/.config/herdr-app/AGENTS.md`](https://herdr.dev/mods).
+Or ask your agent to add the mod from this repo: [`app/RECIPE.md`](app/RECIPE.md) is the
+brief it builds from, as for any mod on [herdr.dev/mods](https://herdr.dev/mods).
 
 With the TUI plugin installed too, `install-cli` (above) already puts the CLI where the
 panel finds it; skip the `ln -s`. Without the TUI the shim has no Herdr to ask, hence
@@ -402,8 +403,8 @@ Design decisions live in [`docs/adr/`](docs/adr/); the app backend is
   appear on next open
 - **The panel finds the CLI** on `PATH`, else `~/.local/bin`; installed anywhere else, it
   shows an error
-- **Sharing on herdr.dev/mods** waits on a week of local use, and on Herdr making panel
-  buttons data-driven so the panel installs without cloning `main` and `tabs`
+- **Installing the panel means cloning `main` and `tabs`** until Herdr makes panel buttons
+  data-driven; [`app/RECIPE.md`](app/RECIPE.md) walks an agent through it
 
 PRs welcome — especially agent kinds tested in the wild, cleanup policies, and notification shapes.
 
