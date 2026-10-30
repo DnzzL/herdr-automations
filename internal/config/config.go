@@ -227,10 +227,12 @@ var modelFlagKinds = map[string]bool{
 // KindAcceptsModel reports whether this agent kind understands `--model`.
 func KindAcceptsModel(kind string) bool { return modelFlagKinds[kind] }
 
-// promptArgKinds are the agent kinds that take their first message as a
-// trailing argument, which is how the hc host hands over the prompt. Others
-// (opencode's positional is a project, gemini wants -i) need their own flag
-// and are refused under hc until someone needs one.
+// promptArgKinds are the agent kinds the hc host can run: they take their
+// first message as a trailing argument, and they report their state to hc
+// (OSC 7501), without which a run can't be told done from stuck. Measured on
+// 2026-10-30: claude and pi report; opencode reports nothing; codex is
+// assumed from its CLI, not measured. Herdr's TUI watches agents' screens
+// itself, which is why it supports more of them.
 var promptArgKinds = map[string]bool{
 	"claude": true,
 	"codex":  true,

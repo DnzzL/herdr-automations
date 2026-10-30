@@ -210,8 +210,11 @@ With the TUI plugin installed too, `install-cli` (above) already puts the CLI wh
 panel finds it; skip the `ln -s`. Without the TUI the shim has no Herdr to ask, hence
 the link.
 
-Under `backend: hc`, agents take their prompt as an argument, which `claude`, `codex`
-and `pi` do; other kinds are refused when the file loads. `workflow:` and `session:`
+Under `backend: hc`, a run needs an agent that takes its prompt as an argument and
+reports its state to herdr-core, or a finished run can't be told from a stuck one:
+`claude` and `pi` (measured), `codex` (assumed, untested). The form offers the ones
+installed. Other kinds are refused when the file loads; the TUI, which reads agents'
+screens itself, runs them all. `workflow:` and `session:`
 belong to the TUI and are refused too. A daemon started by a TUI session still exits
 with the last one under `backend: herdr`; the login service never does.
 
@@ -401,6 +404,8 @@ Design decisions live in [`docs/adr/`](docs/adr/); the app backend is
   the global pause does not
 - **Space adoption while the app is closed** is untested: a run started then should
   appear on next open
+- **Agents under hc** are limited to those that report their state to herdr-core;
+  OpenCode does not yet. `codex` is allowed but untested
 - **The panel finds the CLI** on `PATH`, else `~/.local/bin`; installed anywhere else, it
   shows an error
 - **Installing the panel means cloning `main` and `tabs`** until Herdr makes panel buttons

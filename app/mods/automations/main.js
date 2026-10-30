@@ -6,7 +6,7 @@
 
 import { View, div, svg } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input, TextareaState, Textarea } from "gpui-base";
-import { exec, hc, home, theme, terminals, spaces, run, notify, pickFolder, watchFolder } from "herdr";
+import { exec, hc, home, theme, terminals, spaces, run, notify, pickFolder, watchFolder, knownAgents } from "herdr";
 
 const PRESETS = [
   ["Hourly", "0 * * * *"],
@@ -15,7 +15,8 @@ const PRESETS = [
   ["Mondays 9:00", "0 9 * * 1"],
   ["Fridays 17:00", "0 17 * * 5"],
 ];
-// The agents that take their prompt as an argument under hc (config.KindTakesPromptArg).
+// The agents hc can hand a prompt to and watch to the end (config.KindTakesPromptArg).
+// The form offers the ones installed here.
 const AGENTS = ["claude", "codex", "pi"];
 const WORKSPACES = [["worktree", "New worktree"], ["root", "Repo root"], ["existing", "Existing space"]];
 const FINISHED = new Set(["done", "failed", "cancelled"]);
@@ -147,6 +148,7 @@ export default class Automations extends View {
     this.view = { kind: "form" };
     cx.spawn(async (cx) => {
       try { this.templates = JSON.parse((await hc(["templates", "--json"])).stdout).templates ?? []; } catch { this.templates = []; }
+      try { this.installed = (await knownAgents()).filter((a) => a.installed).map((a) => a.key); } catch { this.installed = null; }
       cx.notify();
     });
     this.preview(cx);
@@ -340,7 +342,9 @@ export default class Automations extends View {
     const cron = f.cron.value().trim();
     const presets = [...PRESETS.map(([l, c]) => [c, l]), ["custom", "Custom"]];
     const preset = PRESETS.some(([, c]) => c === cron) ? cron : "custom";
-    const agents = [...AGENTS.map((a) => [a, a]), ...(this.templates ?? []).map((tp) => [`template:${tp.name}`, `${tp.name} (template)`])];
+    // Installed ones, and the entry's own agent even if it is not (any more).
+    const offered = AGENTS.filter((a) => !this.installed || this.installed.includes(a) || a === f.agent);
+    const agents = [...offered.map((a) => [a, a]), ...(this.templates ?? []).map((tp) => [`template:${tp.name}`, `${tp.name} (template)`])];
     const agentValue = f.template ? `template:${f.template}` : f.agent;
     const res = f.result;
     return v_flex().p(14).gap(4)
