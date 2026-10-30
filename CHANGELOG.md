@@ -2,7 +2,7 @@
 
 What changed for someone using the plugin. Dates are release dates.
 
-## Unreleased
+## v0.11.2 — 2026-10-30
 
 - A pi run under `backend: hc` that works longer than two minutes is no longer
   recorded as failed. pi counts its turn when it ends, not when it starts.
