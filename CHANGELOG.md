@@ -2,7 +2,7 @@
 
 What changed for someone using the plugin. Dates are release dates.
 
-## Unreleased
+## v0.11.1 — 2026-10-30
 
 - `service install` survives `herdr plugin update`. The service now runs the
   `install-cli` shim when there is one, and leaves for launchd to relaunch it
