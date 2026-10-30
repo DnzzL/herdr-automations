@@ -88,7 +88,12 @@ func Run(standby bool) error {
 				log.Printf("no Herdr session is running, shutting down")
 				return nil
 			}
-			if stamp := binaryStamp(exe); stamp != binary && stamp != "" {
+			stamp := binaryStamp(exe)
+			if binaryGone(standby, stamp) && !runs.Busy() {
+				log.Printf("%s is gone (plugin updated?), leaving for the service to relaunch", exe)
+				return nil
+			}
+			if stamp != binary && stamp != "" {
 				restart(runs, exe, "binary changed")
 			}
 			if cfg, err := config.Load(); err == nil && cfg.Backend != backend {
@@ -101,6 +106,12 @@ func Run(standby bool) error {
 		}
 	}
 }
+
+// binaryGone reports whether the login service should leave so launchd
+// relaunches it: its binary was moved away, as a plugin update does to the
+// checkout. The service runs through the install-cli shim, which finds the new
+// one. A daemon a TUI session started has no one to relaunch it; it stays.
+func binaryGone(standby bool, stamp string) bool { return standby && stamp == "" }
 
 // noSessionLeft decides when the daemon is done. It outlives the session that
 // started it — every run names its own, and a session already up never re-runs

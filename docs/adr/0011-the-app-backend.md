@@ -32,7 +32,9 @@ the window closed.
    and a run whose space is gone fails.
 3. **The daemon is an OS service.** `service install` writes a launchd agent
    (macOS) or a systemd user unit (Linux). It replaces `[[startup]]` for app
-   users.
+   users. It runs the `install-cli` shim when there is one: a plugin update
+   moves the checkout, and the service daemon leaves when its binary is gone so
+   launchd relaunches it through the shim onto the new build.
 4. **The panel's only seam is the CLI.** The mod runs
    `herdr-automations … --json` through `exec` and watches the config folder.
    It never parses YAML or cron, and never writes the files itself. Read state

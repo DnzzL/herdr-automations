@@ -26,18 +26,11 @@ type Spec struct {
 	Env  map[string]string
 }
 
-// Install writes the service for this binary and starts it. env is baked in:
+// Install writes the service running program and starts it. env is baked in:
 // the shell's PATH, so the daemon finds hc, git and the agents, and the
 // resolved directories, so it reads the automations.yaml the CLI reads.
-func Install(env map[string]string, logs string) (string, error) {
-	exe, err := os.Executable()
-	if err != nil {
-		return "", err
-	}
-	if exe, err = filepath.EvalSymlinks(exe); err != nil {
-		return "", err
-	}
-	s := Spec{Exe: exe, Logs: logs, Env: env}
+func Install(program string, env map[string]string, logs string) (string, error) {
+	s := Spec{Exe: program, Logs: logs, Env: env}
 	switch runtime.GOOS {
 	case "darwin":
 		path := plistPath()
