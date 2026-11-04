@@ -310,6 +310,7 @@ func TestExistingWorkspaceSurvivesConfigRoundTrip(t *testing.T) {
 }
 
 func TestSessionNamesWhereTheRunHappens(t *testing.T) {
+	onPlatform(t, "linux") // sessions are the herdr backend's
 	withConfig(t, `
 automations:
   - {name: triage, cron: "@daily", repo: /x, prompt: p, session: automations}
@@ -358,6 +359,7 @@ automations: []
 // Defaulting to auto would move every TUI user who also has the app to hc on
 // upgrade, without a word.
 func TestLoadDefaultsBackendToHerdr(t *testing.T) {
+	onPlatform(t, "linux")
 	withConfig(t, "automations: []\n")
 	cfg, err := Load()
 	if err != nil {
@@ -378,6 +380,7 @@ func TestLoadRejectsUnknownBackend(t *testing.T) {
 }
 
 func TestTemplateNeedsTheHCBackendAndNoAgent(t *testing.T) {
+	onPlatform(t, "linux")
 	entry := func(extra string) string {
 		return `
   - name: t
@@ -428,6 +431,74 @@ automations:
 	}
 	if len(cfg.Invalid) != 1 || !strings.Contains(cfg.Invalid[0].Message, "workflow") {
 		t.Fatalf("got %+v", cfg.Invalid)
+	}
+}
+
+// onPlatform makes Load behave as it does on goos, so the Windows rules are
+// proven on every CI runner and the Unix ones still hold on Windows.
+func onPlatform(t *testing.T, platform string) {
+	t.Helper()
+	was := goos
+	goos = platform
+	t.Cleanup(func() { goos = was })
+}
+
+// Windows has no Herdr TUI (ADR 0013): the desktop app is the only backend, so
+// the default, and auto from a config shared with a Mac, must land there.
+func TestOnWindowsNoBackendAndAutoMeanHC(t *testing.T) {
+	onPlatform(t, "windows")
+	for _, head := range []string{"", "backend: auto\n"} {
+		withConfig(t, head+"automations: []\n")
+		cfg, err := Load()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cfg.Backend != BackendHC || len(cfg.Invalid) != 0 {
+			t.Errorf("%q: got backend %q, invalid %+v; want hc, none", head, cfg.Backend, cfg.Invalid)
+		}
+	}
+}
+
+// An explicit herdr would launch every run into a server that does not exist.
+// One Diagnostic on the backend line says so; the entries still run on hc.
+func TestOnWindowsTheHerdrBackendIsADiagnostic(t *testing.T) {
+	onPlatform(t, "windows")
+	withConfig(t, `paused: false
+backend: herdr
+automations:
+  - {name: t, cron: "@daily", repo: /x, prompt: p, template: reviewer}
+`)
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.Invalid) != 1 || cfg.Invalid[0].Line != 2 ||
+		!strings.Contains(cfg.Invalid[0].Message, "herdr backend is unavailable on windows") {
+		t.Fatalf("invalid = %+v, want one diagnostic on line 2", cfg.Invalid)
+	}
+	if cfg.Backend != BackendHC || len(cfg.Automations) != 1 {
+		t.Fatalf("got backend %q, %d automations; want hc and the entry", cfg.Backend, len(cfg.Automations))
+	}
+}
+
+// The wizard saves what loaded: on Windows that is hc, the default there, and
+// it must not grow a backend line the user never wrote.
+func TestOnWindowsSaveWritesNoBackendLine(t *testing.T) {
+	onPlatform(t, "windows")
+	withConfig(t, "automations: []\n")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Save(cfg); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(Path())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "backend") {
+		t.Fatalf("saved %q", raw)
 	}
 }
 

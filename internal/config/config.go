@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -55,6 +56,10 @@ const (
 	BackendHerdr Backend = "herdr" // the TUI's server; the default
 	BackendHC    Backend = "hc"    // herdr-core, shown by the desktop app
 )
+
+// goos is the platform Load applies its backend rules for; a variable so the
+// Windows rules are tested on every runner (ADR 0013).
+var goos = runtime.GOOS
 
 // Automation is one scheduled entry: a prompt (or delegated workflow) fired
 // on a cron schedule against an agent in a provisioned workspace.
@@ -107,7 +112,8 @@ type Automation struct {
 
 type Config struct {
 	// Backend picks where runs are launched. Defaults to herdr, so a file
-	// written before backends existed keeps running where it always did.
+	// written before backends existed keeps running where it always did; on
+	// Windows it is always hc, auto settled at load (ADR 0013).
 	Backend Backend `yaml:"backend,omitempty"`
 	// Paused holds every automation, on top of each one's own Disabled, so
 	// resuming restores exactly what was paused before.
@@ -314,14 +320,30 @@ func parse(raw []byte) (*Config, error) {
 		return nil, fmt.Errorf("parse %s: %w", Path(), err)
 	}
 	switch doc.Backend {
-	case "":
-		doc.Backend = BackendHerdr
-	case BackendAuto, BackendHerdr, BackendHC:
+	case "", BackendAuto, BackendHerdr, BackendHC:
 	default:
 		return nil, fmt.Errorf("%s: backend must be herdr, hc or auto, got %q", Path(), doc.Backend)
 	}
-
 	cfg := &Config{Backend: doc.Backend, Paused: doc.Paused}
+	if doc.Backend == "" {
+		cfg.Backend = defaultBackend()
+	}
+	// Windows has no Herdr TUI, only the desktop app (ADR 0013): auto there
+	// can only mean hc, and an explicit herdr would launch every run into a
+	// server that does not exist. Said once on the backend line, the entries
+	// themselves still run on hc.
+	if goos == "windows" {
+		if doc.Backend == BackendHerdr {
+			var at struct {
+				Backend yaml.Node `yaml:"backend"`
+			}
+			_ = yaml.Unmarshal(raw, &at) // parsed once already; only the line is wanted
+			cfg.Invalid = append(cfg.Invalid, Diagnostic{
+				Line: at.Backend.Line, Message: "the herdr backend is unavailable on windows; use hc",
+			})
+		}
+		cfg.Backend = BackendHC
+	}
 	seen := map[string]bool{}
 	for _, node := range doc.Automations {
 		var a Automation
@@ -401,9 +423,9 @@ func Save(cfg *Config) error {
 	if err := os.MkdirAll(Dir(), 0o755); err != nil {
 		return err
 	}
-	// herdr is the default: writing it would add a line to every file saved.
+	// The default goes unwritten: writing it would add a line to every file saved.
 	out := *cfg
-	if out.Backend == BackendHerdr {
+	if out.Backend == defaultBackend() {
 		out.Backend = ""
 	}
 	raw, err := yaml.Marshal(&out)
@@ -411,6 +433,16 @@ func Save(cfg *Config) error {
 		return err
 	}
 	return os.WriteFile(Path(), raw, 0o644)
+}
+
+// defaultBackend is what a file with no backend line runs on: herdr, so a
+// file written before backends existed keeps running where it always did, and
+// hc on Windows, where it is the only one.
+func defaultBackend() Backend {
+	if goos == "windows" {
+		return BackendHC
+	}
+	return BackendHerdr
 }
 
 // Find returns the automation named name, or nil.

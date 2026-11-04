@@ -17,8 +17,13 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 )
+
+// goos is the platform the lookups follow; a variable so the Windows rules are
+// tested on every runner.
+var goos = runtime.GOOS
 
 // PluginID must match the id in herdr-plugin.toml: it locates the same
 // directories Herdr hands the daemon when the CLI is run from a plain shell.
@@ -39,24 +44,44 @@ func Bin() string {
 // HCBin locates herdr-core's CLI. A launchd or systemd service starts with a
 // bare PATH that rarely holds ~/.local/bin, where the desktop app installs it,
 // so that is the fallback rather than a bare "hc" that would not resolve.
+//
+// On Windows the app's installer puts herdr-core.exe under
+// %LOCALAPPDATA%\Programs\herdr-core and links hc.exe to it only when no hc
+// exists, so herdr-core may be the only name there is, on PATH or not.
 func HCBin() string {
 	if b := os.Getenv("HC_BIN"); b != "" && usable(b) {
 		return b
 	}
-	if b, err := exec.LookPath("hc"); err == nil {
-		return b
+	names := []string{"hc"}
+	if goos == "windows" {
+		names = append(names, "herdr-core")
+	}
+	for _, name := range names {
+		if b, err := exec.LookPath(name); err == nil {
+			return b
+		}
 	}
 	home, _ := os.UserHomeDir()
-	if b := filepath.Join(home, ".local", "bin", "hc"); usable(b) {
-		return b
+	installs := []string{filepath.Join(home, ".local", "bin", "hc")}
+	if d := os.Getenv("LOCALAPPDATA"); goos == "windows" && d != "" {
+		installs = append(installs, filepath.Join(d, "Programs", "herdr-core", "herdr-core.exe"))
+	}
+	for _, b := range installs {
+		if usable(b) {
+			return b
+		}
 	}
 	return "hc"
 }
 
-// usable reports whether path is something we could actually execute.
+// usable reports whether path is something we could actually execute. Go
+// reports no exec bits on Windows, where a file that exists is the best sign.
 func usable(path string) bool {
 	info, err := os.Stat(path)
-	return err == nil && !info.IsDir() && info.Mode()&0o111 != 0
+	if err != nil || info.IsDir() {
+		return false
+	}
+	return goos == "windows" || info.Mode()&0o111 != 0
 }
 
 // ConfigDir resolves the config directory. Under Herdr the env var is
