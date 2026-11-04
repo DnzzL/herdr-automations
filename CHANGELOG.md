@@ -2,20 +2,22 @@
 
 What changed for someone using the plugin. Dates are release dates.
 
-## Unreleased
+## v0.12.0 — 2026-11-04
 
 - `close_workspace: on-success` closes a run's workspace once it is recorded
   `done`, under both backends. Failed runs, and runs whose agent waits on you,
-  stay open; the worktree stays on disk for `cleanup`. Default `never`.
+  stay open; the worktree stays on disk for `cleanup`. Default `never`. Thanks
+  @rstacruz for the report and the design (#13).
 - GitHub Copilot runs under `backend: hc`, and the panel's form offers it. Its
   prompt goes in through `-i` (a bare argument is refused, and `-p` would exit
   after one answer). Trust `~/.herdr/worktrees` in Copilot once, or a run in a
-  new worktree waits on Copilot's folder question.
+  new worktree waits on Copilot's folder question. Thanks @robertobrambila (#20).
 - Editing an automation in the panel no longer drops what the form does not
   show: a paused automation stays paused, and `agent_args`, `catch_up_minutes`
-  and `session` are kept. `put` now replaces only the keys it is sent.
+  and `session` are kept. `put` now replaces only the keys it is sent. Thanks
+  @lidong-aesona for spotting it (#18).
 - A run left unread no longer makes the next one fail with `agent_name_taken`:
-  the next run's agent takes a name carrying its pane's ID.
+  the next run's agent takes a name carrying its pane's ID. Thanks @rstacruz (#13).
 - In the panel, an active automation's dot is green rather than grey.
 
 ## v0.11.3 — 2026-10-30
