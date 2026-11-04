@@ -17,7 +17,7 @@ automations:
       draft replies for the ones needing more info.
 ```
 
-![The Automations board: schedules, last run status, and jumping into the config](docs/board.gif)
+<img src="docs/app-panel.png" alt="The Automations panel in the Herdr app: an inbox of finished runs, then every automation with its schedule, next run and agent" width="430">
 
 If you have used ChatGPT's Scheduled tasks, this is the same boundary — a prompt, a
 schedule, a model, and a choice between an isolated worktree and the repo itself —
@@ -50,9 +50,9 @@ a Friday digest — deserve better than you retyping the same prompt every morni
 - **MCP attach** — `mcp_config: path.json` hands the agent its MCP servers (GitHub, Slack, your DB…)
 - **Full run history** — append-only JSONL: `scheduled → running → done | failed | skipped | missed`, with workspace and pane IDs to jump back into
 - **Self-updating daemon** — it re-executes itself when the plugin binary changes, and a file lock keeps a second scheduler from double-firing everything
-- **Live board** — an overlay pane inside Herdr: next run, last status, `r` to run now, `enter` to jump straight into the workspace a run created
+- **Live board** — an overlay pane inside the Herdr TUI: next run, last status, `r` to run now, `enter` to jump straight into the workspace a run created
 - **Agents can self-schedule** — a bundled [skill](skills/creating-automations/SKILL.md) teaches coding agents the format: say *"triage my errors every morning"* and the agent writes the entry itself
-- **Herdr desktop app** — `backend: hc` runs automations in the [app](#in-the-herdr-desktop-app), with a panel beside Files and Changes: an inbox of finished runs, run now, pause, and a form with the next runs previewed
+- **Herdr desktop app** — `backend: hc` runs automations in the [app](#desktop-app), with a panel beside Files and Changes: an inbox of finished runs, run now, pause, and a form with the next runs previewed
 - **A failure finds you** — a run that fails, a run that's missed, or a broken entry raises a Herdr toast; everything else stays quiet
 
 ## What it isn't
@@ -69,36 +69,22 @@ schedules, accumulating worktrees — it reports and waits for you.
 
 ## Quick start
 
-```bash
-herdr plugin install DnzzL/herdr-automations   # prebuilt binary, no toolchain needed
-herdr plugin action invoke install-cli --plugin dnzzl.automations   # shim in ~/.local/bin
-herdr-automations add                          # wizard: validates cron, previews next 3 runs
-```
+Herdr comes as a desktop app and as a terminal UI. Install for the one you use, the
+[desktop app](#desktop-app) or the [terminal](#terminal-tui): both read the same
+`automations.yaml`.
 
-Prebuilt for macOS and Linux (arm64/amd64), checksum-verified at install; anything
-else builds from source and needs Go.
-
-Herdr doesn't put plugin binaries on `PATH`, so `install-cli` writes a small
-`herdr-automations` shim that asks Herdr where the plugin lives on every call:
-`herdr plugin update` keeps it working. The action runs in the background and
-prints nothing; if `herdr-automations` is then not found, add `~/.local/bin` to
-your `PATH`. To put the shim in another directory:
-
-```bash
-"$(herdr plugin list --plugin dnzzl.automations --json | sed -n 's/.*"plugin_root":"\([^"]*\)".*/\1/p')"/bin/herdr-automations install-cli ~/bin
-```
-
-**Three ways to add an automation**, all writing the same file:
+**Four ways to add an automation**, all writing the same file:
 
 1. `herdr-automations add` — the wizard: validates the cron, previews the next three
    runs, and warns if another automation is already due at the same time
 
    ![The add wizard: naming an automation, validating its cron, previewing the next runs](docs/wizard.gif)
 
-2. **Edit the YAML** — `herdr plugin config-dir dnzzl.automations` → `automations.yaml`
-   (or press `e` on the board to open it at the right line). Full reference in
+2. **The app's form** — `+` in the panel, with the next runs previewed as you type
+3. **Edit the YAML** — `herdr plugin config-dir dnzzl.automations` → `automations.yaml`
+   (or press `e` on the TUI's board to open it at the right line). Full reference in
    [`automations.example.yaml`](automations.example.yaml)
-3. **Ask your agent** — see below
+4. **Ask your agent** — see below
 
 The daemon picks up edits within 30 seconds, no restart.
 
@@ -130,41 +116,11 @@ Then, in any new agent session, plain language is enough:
 The agent writes the YAML entry, and the daemon picks it up within 30 seconds. The
 skill is a copy: after upgrading the plugin, run `npx skills update` to match.
 
-### The board, inside Herdr
-
-A live overlay listing every automation with its next run and last status:
-
-```bash
-herdr plugin pane open --plugin dnzzl.automations --entrypoint board --placement overlay
-```
-
-| Key | Does |
-|---|---|
-| `enter` | **Jump to the last run** — focuses the workspace that automation spawned, so you land right in the agent's terminal |
-| `r` | Run the selected automation now |
-| `e` | Open `automations.yaml` in `$EDITOR`, **cursor on that automation's line** |
-| `c` | Clean up the run worktrees whose work already landed — it counts them, asks `y/n`, and touches nothing else |
-| `j` / `k` | Move · `q` closes |
-
-Bind it to a chord so you never type that command again — in `~/.config/herdr/config.toml`:
-
-```toml
-[[keys.command]]
-key = "prefix+a"
-type = "shell"
-command = "herdr plugin pane open --plugin dnzzl.automations --entrypoint board --placement overlay"
-```
-
-The plugin also registers an action (`herdr plugin action invoke run-now --plugin dnzzl.automations`)
-that prompts for which automation to fire.
-
-### In the Herdr desktop app
+## Desktop app
 
 The [Herdr app](https://herdr.dev) runs its agents in herdr-core (`hc`), not in the
 TUI's server, and the two share no agents. Set `backend: hc` and runs open as spaces
-in the app instead, with a panel of their own beside Files and Changes:
-
-<img src="docs/app-panel.png" alt="The Automations panel in the Herdr app: an inbox of finished runs, then every automation with its schedule, next run and agent" width="430">
+in the app instead, with a panel of their own beside Files and Changes (pictured at the top):
 
 - **Inbox** — runs that finished since you last looked; a failure says why. Click one to
   jump into its terminal while it is still open. `Mark all read` clears it
@@ -206,7 +162,7 @@ add an `automations` block to the `panel-body` stack, and a button for it in the
 Or ask your agent to add the mod from this repo: [`app/RECIPE.md`](app/RECIPE.md) is the
 brief it builds from, as for any mod on [herdr.dev/mods](https://herdr.dev/mods).
 
-With the TUI plugin installed too, `install-cli` (above) already puts the CLI where the
+With the TUI plugin installed too, `install-cli` ([below](#terminal-tui)) already puts the CLI where the
 panel finds it; skip the `ln -s`. Without the TUI the shim has no Herdr to ask, hence
 the link.
 
@@ -219,6 +175,59 @@ it times out. The form offers the ones installed. Other kinds are refused when t
 screens itself, runs them all. `workflow:` and `session:`
 belong to the TUI and are refused too. A daemon started by a TUI session still exits
 with the last one under `backend: herdr`; the login service never does.
+
+## Terminal (TUI)
+
+### Install
+
+```bash
+herdr plugin install DnzzL/herdr-automations   # prebuilt binary, no toolchain needed
+herdr plugin action invoke install-cli --plugin dnzzl.automations   # shim in ~/.local/bin
+herdr-automations add                          # wizard: validates cron, previews next 3 runs
+```
+
+Prebuilt for macOS and Linux (arm64/amd64), checksum-verified at install; anything
+else builds from source and needs Go.
+
+Herdr doesn't put plugin binaries on `PATH`, so `install-cli` writes a small
+`herdr-automations` shim that asks Herdr where the plugin lives on every call:
+`herdr plugin update` keeps it working. The action runs in the background and
+prints nothing; if `herdr-automations` is then not found, add `~/.local/bin` to
+your `PATH`. To put the shim in another directory:
+
+```bash
+"$(herdr plugin list --plugin dnzzl.automations --json | sed -n 's/.*"plugin_root":"\([^"]*\)".*/\1/p')"/bin/herdr-automations install-cli ~/bin
+```
+
+### The board
+
+![The Automations board: schedules, last run status, and jumping into the config](docs/board.gif)
+
+A live overlay listing every automation with its next run and last status:
+
+```bash
+herdr plugin pane open --plugin dnzzl.automations --entrypoint board --placement overlay
+```
+
+| Key | Does |
+|---|---|
+| `enter` | **Jump to the last run** — focuses the workspace that automation spawned, so you land right in the agent's terminal |
+| `r` | Run the selected automation now |
+| `e` | Open `automations.yaml` in `$EDITOR`, **cursor on that automation's line** |
+| `c` | Clean up the run worktrees whose work already landed — it counts them, asks `y/n`, and touches nothing else |
+| `j` / `k` | Move · `q` closes |
+
+Bind it to a chord so you never type that command again — in `~/.config/herdr/config.toml`:
+
+```toml
+[[keys.command]]
+key = "prefix+a"
+type = "shell"
+command = "herdr plugin pane open --plugin dnzzl.automations --entrypoint board --placement overlay"
+```
+
+The plugin also registers an action (`herdr plugin action invoke run-now --plugin dnzzl.automations`)
+that prompts for which automation to fire.
 
 ## How a run works
 
