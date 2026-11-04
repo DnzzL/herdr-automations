@@ -76,7 +76,7 @@ func List() (Listing, error) {
 	}
 	pid, _ := daemon.Running()
 	out := Listing{
-		Backend: cfg.Backend, Paused: cfg.Paused, Scheduler: pid, Config: config.Path(), State: config.StateDir(),
+		Backend: cfg.Backend.Effective(), Paused: cfg.Paused, Scheduler: pid, Config: config.Path(), State: config.StateDir(),
 		Automations: []Automation{}, Invalid: []Invalid{},
 	}
 	now := time.Now()

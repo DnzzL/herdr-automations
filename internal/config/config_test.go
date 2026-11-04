@@ -266,6 +266,7 @@ func TestSaveRefusesToDropTheEntriesThatDidNotLoad(t *testing.T) {
 }
 
 func TestExistingWorkspaceValidation(t *testing.T) {
+	onPlatform(t, "linux") // an agent-less entry is a herdr one
 	a := Automation{Name: "inbox", Cron: "@hourly", Repo: "/repo", Prompt: "check", Workspace: WorkspaceExisting}
 	if err := a.validate(BackendHerdr); err == nil {
 		t.Fatal("missing workspace_id accepted")
@@ -443,18 +444,43 @@ func onPlatform(t *testing.T, platform string) {
 	t.Cleanup(func() { goos = was })
 }
 
-// Windows has no Herdr TUI (ADR 0013): the desktop app is the only backend, so
-// the default, and auto from a config shared with a Mac, must land there.
-func TestOnWindowsNoBackendAndAutoMeanHC(t *testing.T) {
+// The backend line is shared with a Mac: a wizard save on Windows must write
+// back what was there, or the Mac silently moves to herdr.
+func TestOnWindowsSaveKeepsTheBackendLineAsWritten(t *testing.T) {
 	onPlatform(t, "windows")
-	for _, head := range []string{"", "backend: auto\n"} {
+	for _, head := range []string{"", "backend: auto\n", "backend: hc\n"} {
 		withConfig(t, head+"automations: []\n")
 		cfg, err := Load()
 		if err != nil {
 			t.Fatal(err)
 		}
-		if cfg.Backend != BackendHC || len(cfg.Invalid) != 0 {
-			t.Errorf("%q: got backend %q, invalid %+v; want hc, none", head, cfg.Backend, cfg.Invalid)
+		if err := Save(cfg); err != nil {
+			t.Fatal(err)
+		}
+		raw, err := os.ReadFile(Path())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := string(raw); !strings.HasPrefix(got, head) || strings.Count(got, "backend") != strings.Count(head, "backend") {
+			t.Errorf("%q saved as %q", head, got)
+		}
+	}
+}
+
+// Windows has no Herdr TUI (ADR 0013): whatever the line says, entries are
+// checked as hc runs, so a template entry shared with a Mac on auto loads.
+func TestOnWindowsEntriesValidateAsHC(t *testing.T) {
+	onPlatform(t, "windows")
+	for _, head := range []string{"", "backend: auto\n"} {
+		withConfig(t, head+`automations:
+  - {name: t, cron: "@daily", repo: /x, prompt: p, template: reviewer}
+`)
+		cfg, err := Load()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(cfg.Invalid) != 0 || len(cfg.Automations) != 1 {
+			t.Errorf("%q: invalid %+v, %d automations; want the entry", head, cfg.Invalid, len(cfg.Automations))
 		}
 	}
 }
@@ -476,29 +502,8 @@ automations:
 		!strings.Contains(cfg.Invalid[0].Message, "herdr backend is unavailable on windows") {
 		t.Fatalf("invalid = %+v, want one diagnostic on line 2", cfg.Invalid)
 	}
-	if cfg.Backend != BackendHC || len(cfg.Automations) != 1 {
-		t.Fatalf("got backend %q, %d automations; want hc and the entry", cfg.Backend, len(cfg.Automations))
-	}
-}
-
-// The wizard saves what loaded: on Windows that is hc, the default there, and
-// it must not grow a backend line the user never wrote.
-func TestOnWindowsSaveWritesNoBackendLine(t *testing.T) {
-	onPlatform(t, "windows")
-	withConfig(t, "automations: []\n")
-	cfg, err := Load()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := Save(cfg); err != nil {
-		t.Fatal(err)
-	}
-	raw, err := os.ReadFile(Path())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(string(raw), "backend") {
-		t.Fatalf("saved %q", raw)
+	if len(cfg.Automations) != 1 {
+		t.Fatalf("got %d automations; want the entry, checked as hc", len(cfg.Automations))
 	}
 }
 

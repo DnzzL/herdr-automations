@@ -7,6 +7,7 @@ import (
 
 // Resolve settles auto: herdr-core when it answers, else the TUI's server.
 func Resolve(b config.Backend) config.Backend {
+	b = b.Effective()
 	if b != config.BackendAuto {
 		return b
 	}
