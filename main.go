@@ -17,6 +17,7 @@ import (
 	"github.com/DnzzL/herdr-automations/internal/cleanup"
 	"github.com/DnzzL/herdr-automations/internal/config"
 	"github.com/DnzzL/herdr-automations/internal/daemon"
+	"github.com/DnzzL/herdr-automations/internal/detach"
 	"github.com/DnzzL/herdr-automations/internal/herdr"
 	"github.com/DnzzL/herdr-automations/internal/history"
 	"github.com/DnzzL/herdr-automations/internal/pane"
@@ -36,7 +37,7 @@ Usage:
   herdr-automations daemon [--standby]
                                      Run the scheduler (--standby: wait while another one runs)
   herdr-automations service install|uninstall|status
-                                     Run the scheduler as a login service (launchd, systemd)
+                                     Run the scheduler as a login service (launchd, systemd, Windows Run key)
   herdr-automations add              Interactive wizard: create an automation
   herdr-automations list [--json]    List automations with schedule and last run
   herdr-automations run <name> [--bg]
@@ -70,6 +71,11 @@ func main() {
 	args, asJSON := withoutFlag(os.Args[2:], "--json")
 	switch os.Args[1] {
 	case "daemon":
+		args, fromLogin := withoutFlag(args, service.FromLogin)
+		if fromLogin {
+			err = relaunchDetached()
+			break
+		}
 		_, standby := withoutFlag(args, "--standby")
 		err = daemon.Run(standby)
 		if errors.Is(err, daemon.ErrAlreadyRunning) {
@@ -411,7 +417,7 @@ func putCmd(args []string) error {
 	return printJSON(config.Put(original, a, given, dryRun))
 }
 
-// runDetached starts `run <name>` detached (see detach) and returns at once. The
+// runDetached starts `run <name>` detached (see detach.Cmd) and returns at once. The
 // panel cannot wait an hour on exec, and the run must outlive the app.
 func runDetached(args []string) error {
 	if len(args) != 1 {
@@ -431,8 +437,18 @@ func runDetached(args []string) error {
 	defer logf.Close()
 	cmd := exec.Command(exe, "run", args[0])
 	cmd.Stdout, cmd.Stderr = logf, logf
-	detach(cmd)
+	detach.Cmd(cmd)
 	return cmd.Start()
+}
+
+// relaunchDetached is what the Windows login entry runs: the scheduler again,
+// detached, so the console window Windows opened for it closes.
+func relaunchDetached() error {
+	exe, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	return daemon.StartStandby(exe)
 }
 
 func withoutFlag(args []string, flag string) ([]string, bool) {

@@ -1,5 +1,6 @@
 // Package service installs the daemon as a user service: a launchd agent on
-// macOS, a systemd user unit on Linux. The Herdr desktop app has no plugin
+// macOS, a systemd user unit on Linux, a value under the user's Run registry
+// key on Windows. The Herdr desktop app has no plugin
 // startup hook, and a scheduler must fire with no window open (ADR 0011).
 package service
 
@@ -16,8 +17,15 @@ import (
 	"strings"
 )
 
-// Label names the service in launchd and systemd.
+// Label names the service in launchd and systemd, and the Run value on Windows.
 const Label = "dev.dnzzl.herdr-automations"
+
+// FromLogin marks a scheduler the Windows login entry started. Windows opens
+// a console window for it, so it starts a detached copy of itself and exits
+// (see daemon.StartStandby). A flag rather than sniffing for a fresh console:
+// it is explicit, and a test can drive it where no console exists. It is not
+// in the usage: nobody but the login entry passes it.
+const FromLogin = "--from-login"
 
 // Spec is what the service runs, settled at install time.
 type Spec struct {
@@ -48,6 +56,8 @@ func Install(program string, env map[string]string, logs string) (string, error)
 			return "", err
 		}
 		return path, systemctl("enable", "--now", "herdr-automations.service")
+	case "windows":
+		return installRunValue(s)
 	}
 	return "", fmt.Errorf("no service support on %s; run `herdr-automations daemon` yourself", runtime.GOOS)
 }
@@ -64,12 +74,17 @@ func Uninstall() error {
 			return err
 		}
 		return systemctl("daemon-reload")
+	case "windows":
+		return uninstallRunValue()
 	}
 	return fmt.Errorf("no service support on %s", runtime.GOOS)
 }
 
-// Installed reports whether the service file exists.
+// Installed reports whether the service file (on Windows, the Run value) exists.
 func Installed() bool {
+	if runtime.GOOS == "windows" {
+		return runValueExists()
+	}
 	path := unitPath()
 	if runtime.GOOS == "darwin" {
 		path = plistPath()
