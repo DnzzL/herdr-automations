@@ -227,6 +227,11 @@ func (c Client) AgentStart(name, kind, paneID string, extraArgs []string) error 
 // sleep-delayed worktree create can return minutes before the pane is usable.
 const CodePaneBusy = "agent_pane_busy"
 
+// CodeNameTaken means another live agent already has the name asked for —
+// typically the previous run of the same automation, still open because
+// nobody has read it.
+const CodeNameTaken = "agent_name_taken"
+
 // CodeAgentGone means there is no agent in the target pane any more — the
 // workspace was closed, or the agent exited on its own. herdr only reports it
 // when the call it was given returns, so a wait handed the run's whole timeout

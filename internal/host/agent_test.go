@@ -15,6 +15,26 @@ func agentWorkWith(ops ops, a config.Automation) agentWork {
 
 // ── starting the agent ──────────────────────────────────────────────
 
+// A previous run nobody has read keeps its workspace, and with it the
+// automation's agent name: the next run must still start (#13).
+func TestStartTakesAnotherNameWhileAnUnreadRunHoldsIt(t *testing.T) {
+	var names []string
+	ops := &fakeOps{agentStart: func(name, _, _ string, _ []string) error {
+		names = append(names, name)
+		if name == "hourly-check" {
+			return apiErr("agent start", herdr.CodeNameTaken)
+		}
+		return nil
+	}}
+	a := config.Automation{Name: "hourly-check", Workspace: config.WorkspaceWorktree}
+	if err := agentWorkWith(ops, a).start(Session{PaneID: "w2:p1"}); err != nil {
+		t.Fatalf("want the run to start under another name, got %v", err)
+	}
+	if len(names) != 2 || names[1] == names[0] {
+		t.Fatalf("names tried %q", names)
+	}
+}
+
 func TestStartRetriesUntilThePaneHasAShell(t *testing.T) {
 	calls := 0
 	ops := &fakeOps{agentStart: func(string, string, string, []string) error {

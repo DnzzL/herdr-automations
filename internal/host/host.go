@@ -157,9 +157,10 @@ func slug(name string) string {
 	return out
 }
 
-// agentNameFor is the name this run's agent gets. Normally the automation's,
-// which is what you want to read in Herdr's sidebar: one automation, one agent
-// name, and the previous run's is free because its workspace was closed.
+// agentNameFor is the name this run's agent asks for first. Normally the
+// automation's, which is what you want to read in Herdr's sidebar: one
+// automation, one agent name. While an unread previous run still holds it,
+// start falls back to paneAgentName.
 //
 // In existing mode it is not free — earlier runs stay open in their own tabs on
 // purpose, so their names are still live and a repeat would be refused. The
@@ -169,6 +170,12 @@ func agentNameFor(a config.Automation, paneID string) string {
 	if a.Workspace != config.WorkspaceExisting {
 		return agentName(a.Name)
 	}
+	return paneAgentName(a, paneID)
+}
+
+// paneAgentName is the name no other live agent can hold, since it carries
+// the pane's ID.
+func paneAgentName(a config.Automation, paneID string) string {
 	return agentName(caseMarked(paneID) + "-" + a.Name)
 }
 

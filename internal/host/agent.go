@@ -56,6 +56,12 @@ func (w agentWork) start(s Session) error {
 	deadline := time.Now().Add(w.knobs.paneReady)
 	for {
 		err := w.ops.AgentStart(name, w.a.Agent, s.PaneID, w.args())
+		// An unread previous run still holds the name: take the pane-marked
+		// one existing mode uses, rather than fail every run until it is read.
+		if paneName := paneAgentName(w.a, s.PaneID); w.ops.HasCode(err, herdr.CodeNameTaken) && name != paneName {
+			name = paneName
+			continue
+		}
 		if err == nil || !w.ops.HasCode(err, herdr.CodePaneBusy) {
 			return err
 		}
