@@ -41,7 +41,7 @@ a Friday digest — deserve better than you retyping the same prompt every morni
 
 - **Every run is a branch you can review** — `auto/<name>-<timestamp>` in a fresh worktree, so a run that went sideways is a diff you throw away, not a mess in your working copy. `workspace: root` when the task must see uncommitted state, `workspace: existing` when a run an hour would bury the sidebar
 - **One YAML file** — no DSL, no store, no database. What the plugin knows is the file you wrote plus an append-only run log
-- **Installs without a toolchain** — prebuilt, checksum-verified binaries for macOS and Linux (arm64/amd64)
+- **Installs without a toolchain** — prebuilt, checksum-verified binaries for macOS and Linux (arm64/amd64), and Windows x64 for the desktop app ([community-supported](#windows-community))
 - **`model:` per automation** — a nightly chore has no business on your most expensive model. Set it where you read it; a kind that takes no `--model` is caught when the file loads, not at 3am
 - **Survives sleep** — occurrences are computed off the wall clock, so a run due while the laptop slept fires on wake (within `catch_up_minutes`) instead of vanishing; anything too late is recorded as `missed`
 - **Schedules that overlap say so** — the wizard warns while you are still choosing the cron, and `list` reports every overlap in the week ahead. Herdr starts them all; the plugin never quietly holds one back, it just makes sure you knew
@@ -147,7 +147,7 @@ one is open. Closing a run's space calls the run off, as in the TUI.
 
 **Install without the TUI.** The app has no plugin startup hook, so the scheduler runs
 as a login service (a launchd agent on macOS, a systemd user unit on Linux, a `Run`
-registry value on Windows):
+registry value on Windows). On macOS and Linux (Windows: [below](#windows-community)):
 
 ```bash
 git clone https://github.com/DnzzL/herdr-automations && cd herdr-automations
@@ -176,6 +176,35 @@ it times out. The form offers the ones installed. Other kinds are refused when t
 screens itself, runs them all. `workflow:` and `session:`
 belong to the TUI and are refused too. A daemon started by a TUI session still exits
 with the last one under `backend: herdr`; the login service never does.
+
+### Windows (community)
+
+On Windows, herdr-automations is the desktop app's backend and nothing else. In
+PowerShell, no admin needed:
+
+```powershell
+powershell -c "irm https://raw.githubusercontent.com/DnzzL/herdr-automations/main/scripts/install.ps1 | iex"
+herdr-automations service install     # scheduler at login, now (in a new terminal)
+```
+
+The installer downloads the latest release's `herdr-automations_windows_amd64.exe`,
+refuses it unless it matches the release's `checksums.txt`, puts it in
+`%LOCALAPPDATA%\Programs\herdr-automations` (where the panel looks) and adds that
+folder to your user PATH. Run it again to update, scheduler running or not: the
+running exe is renamed aside, and the scheduler switches to the new one within a
+minute. `$env:HERDR_AUTOMATIONS_VERSION = "0.13.0"` first installs that release
+instead. x64 only.
+
+`backend: hc` is the only backend: no `backend:` line, or `auto`, means hc, and
+`backend: herdr` is refused when the file loads. The TUI plugin, the board, toasts and
+`install-cli` are not supported. The panel installs as above: copy
+`app\mods\automations` into the app's `mods` folder and give it a slot, or hand your
+agent [`app/RECIPE.md`](app/RECIPE.md).
+
+**Community support** ([ADR 0013](docs/adr/0013-windows-is-community-supported-and-hc-only.md)):
+Windows is built, tested and released by CI on every push, installer included, but the
+maintainer has no Windows machine and never runs it by hand. A Windows bug is fixed
+when someone brings a fix or a failing test.
 
 ## Terminal (TUI)
 
@@ -335,7 +364,7 @@ agent's own posture is Herdr's to describe.
 
 - **Writes to two places** — the plugin config dir (`herdr plugin config-dir dnzzl.automations`) and `~/.local/state/herdr/plugins/dnzzl.automations` for the run log. Nothing else on disk is touched by the plugin itself
 - **Creates git worktrees and branches** in the repos you name, `auto/<name>-<timestamp>`. It never removes one on its own — `herdr-automations cleanup` is the only thing that deletes, it asks first, and it only touches `auto/` branches already contained in your default branch
-- **Opens no ports**, phones nothing home, and downloads nothing at runtime — the only network access is `herdr plugin install` fetching a checksum-verified release binary
+- **Opens no ports**, phones nothing home, and downloads nothing at runtime — the only network access is `herdr plugin install` (or `install.ps1` on Windows) fetching a checksum-verified release binary
 - **Raises a Herdr toast** on a failed run, a missed run, or a broken `automations.yaml` entry — in every running Herdr session: a panel inside the Herdr window, not an OS notification, and not sent anywhere
 - **`herdr plugin uninstall`** removes the plugin and leaves your config and history where they are
 - **With the app** — `service install` writes one file, `~/Library/LaunchAgents/dev.dnzzl.herdr-automations.plist` (or `~/.config/systemd/user/herdr-automations.service`), with your `PATH` in it so the scheduler finds `hc`, `git` and the agents. It runs the `install-cli` shim when there is one, and relaunches itself within 30 seconds of a `herdr plugin update`. `service uninstall` removes it. On Windows it writes no file but one value under `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, with no environment, which runs `daemon --standby` at login; `service uninstall` removes the value and stops the scheduler. Nothing relaunches a scheduler that crashes there until the next login. Under `backend: hc` no Herdr toast exists for an outside process to raise, so failures are announced by the panel while a Herdr window is open

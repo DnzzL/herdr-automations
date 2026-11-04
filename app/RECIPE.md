@@ -20,6 +20,9 @@ ln -s "$PWD/bin/herdr-automations" ~/.local/bin/    # where the panel looks off 
 herdr-automations service install                   # the scheduler, at login and now
 ```
 
+On Windows, the PowerShell one-liner in the README's "Windows (community)" section
+installs it instead, then `herdr-automations service install`.
+
 Then put `backend: hc` at the top of the file `herdr-automations list` names, so
 runs open in the app. The mod **runs programs**: `herdr-automations` (every read
 and write) and `hc templates`. It reaches no network and writes no file itself.
