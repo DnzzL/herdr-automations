@@ -19,6 +19,8 @@ automations:
     timeout_minutes: 45
     # If the machine was asleep at 09:00, run on wake — but only within 2h.
     catch_up_minutes: 120
+    # Leave the workspace open: each morning's triage is meant to be read.
+    close_workspace: never
 
   - name: nightly-deps
     cron: "@daily"

@@ -42,7 +42,7 @@ automations:
 		t.Fatal(err)
 	}
 	a := cfg.Automations[0]
-	if a.Workspace != WorkspaceWorktree || a.Agent != "claude" || a.TimeoutMinutes != 60 {
+	if a.Workspace != WorkspaceWorktree || a.Agent != "claude" || a.TimeoutMinutes != 60 || a.CloseWorkspace != CloseNever {
 		t.Fatalf("defaults not applied: %+v", a)
 	}
 	home, _ := os.UserHomeDir()
@@ -209,6 +209,12 @@ automations:
 		"no repo": `
 automations:
   - {name: a, cron: "@daily", prompt: p}`,
+		"bad close_workspace": `
+automations:
+  - {name: a, cron: "@daily", repo: /x, prompt: p, close_workspace: always}`,
+		"close_workspace in a shared workspace": `
+automations:
+  - {name: a, cron: "@daily", repo: /x, prompt: p, workspace: existing, workspace_id: w1, close_workspace: on-success}`,
 	}
 	for label, yaml := range cases {
 		t.Run(label, func(t *testing.T) {

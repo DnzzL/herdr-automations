@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/DnzzL/herdr-automations/internal/config"
+	"github.com/DnzzL/herdr-automations/internal/herdr"
 )
 
 // Session is a provisioned place for a run to happen: a workspace and the pane
@@ -35,6 +36,9 @@ type Session struct {
 type Host interface {
 	Provision(a config.Automation) (Session, error)
 	Do(s Session, a config.Automation, timeout time.Duration) error
+	// Close closes a done run's workspace (close_workspace, ADR 0012). One
+	// already gone is closed. It leaves alone a run still waiting on a person.
+	Close(s Session, a config.Automation) error
 }
 
 // ErrCancelled means the run's workspace was closed while it was working.
@@ -118,6 +122,24 @@ func (h *live) Provision(a config.Automation) (Session, error) {
 // Do runs the automation's work in the session and reports whether it worked.
 func (h *live) Do(s Session, a config.Automation, timeout time.Duration) error {
 	return h.in(a).workFor(a).do(s, timeout)
+}
+
+// Close closes the run's workspace in the session it was opened in, unless
+// its agent waits on a person: herdr's agent wait counts blocked as settled.
+func (h *live) Close(s Session, a config.Automation) error {
+	ops := h.ops
+	if s.HerdrSession != "" {
+		ops = ops.In(s.HerdrSession)
+	}
+	if a.Workflow == "" {
+		if status, err := ops.AgentStatus(s.PaneID); err == nil && status == "blocked" {
+			return fmt.Errorf("its agent is waiting on you")
+		}
+	}
+	if err := ops.WorkspaceClose(s.WorkspaceID); err != nil && !ops.HasCode(err, herdr.CodeWorkspaceGone) {
+		return err
+	}
+	return nil
 }
 
 // work is one way of getting an automation's work done in a session. Two

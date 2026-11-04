@@ -3,6 +3,7 @@ package host
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -22,6 +23,8 @@ type hcOps interface {
 	Run(cwd string, labels map[string]string, argv []string) (string, error)
 	Wait(address string, timeout time.Duration) (hc.Wait, error)
 	Get(address string) (hc.Terminal, error)
+	Kill(address string) error
+	Rm(address string) error
 	// MainCheckout is the repo's main working tree, whatever checkout repo is.
 	MainCheckout(repo string) (string, error)
 	WorktreeAdd(repo, branch, path string) error
@@ -129,6 +132,19 @@ func (h *hcHost) Do(s Session, a config.Automation, timeout time.Duration) error
 			time.Sleep(h.knobs.statusPoll)
 		}
 	}
+}
+
+// Close kills the run's terminal, which makes the app remove its space, then
+// removes the finished terminal. hc counts blocked as unfinished, so Do never
+// reports done for an agent waiting on a person.
+func (h *hcHost) Close(s Session, _ config.Automation) error {
+	if err := h.ops.Kill(s.PaneID); err != nil && !errors.Is(err, hc.ErrNotFound) {
+		return err
+	}
+	if err := h.ops.Rm(s.PaneID); err != nil && !errors.Is(err, hc.ErrNotFound) {
+		return err
+	}
+	return nil
 }
 
 // reportsWork asks the terminal itself: a wait that only checked in may not

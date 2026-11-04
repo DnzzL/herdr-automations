@@ -5,6 +5,7 @@ package hc
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os/exec"
 	"sort"
@@ -44,6 +45,9 @@ type Terminal struct {
 	} `json:"status"`
 }
 
+// ErrNotFound is hc's answer about a terminal it does not have, or no longer.
+var ErrNotFound = errors.New("no such terminal")
+
 func run(out any, args ...string) error {
 	cmd := exec.Command(hostpath.HCBin(), args...)
 	var stdout, stderr bytes.Buffer
@@ -52,6 +56,14 @@ func run(out any, args ...string) error {
 		msg := strings.TrimSpace(stderr.String())
 		if msg == "" {
 			msg = strings.TrimSpace(stdout.String())
+		}
+		var e struct {
+			Error struct {
+				Kind string `json:"kind"`
+			} `json:"error"`
+		}
+		if json.Unmarshal([]byte(msg), &e) == nil && e.Error.Kind == "not_found" {
+			return fmt.Errorf("hc %s: %s (%w)", args[0], msg, ErrNotFound)
 		}
 		return fmt.Errorf("hc %s: %s (%w)", args[0], msg, err)
 	}
@@ -104,6 +116,12 @@ func (Client) Get(address string) (Terminal, error) {
 	err := run(&t, "get", address, "--json")
 	return t, err
 }
+
+// Kill ends a terminal's program. A finished terminal is fine.
+func (Client) Kill(address string) error { return run(nil, "kill", address, "--json") }
+
+// Rm removes a finished terminal, so hc ls --all stops listing it.
+func (Client) Rm(address string) error { return run(nil, "rm", address, "--json") }
 
 // Available reports whether herdr-core answers on this machine.
 func Available() bool {

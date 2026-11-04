@@ -81,6 +81,12 @@ func (r *Runner) Run(a config.Automation, trigger history.Trigger) error {
 		return err
 	}
 	r.record(id, a.Name, trigger, history.StatusDone, session, "")
+	// After the record: closing is also how a person cancels a run.
+	if a.CloseWorkspace == config.CloseOnSuccess {
+		if err := r.host.Close(session, a); err != nil {
+			log.Printf("%s: done, but its workspace stays open: %v", a.Name, err)
+		}
+	}
 	return nil
 }
 

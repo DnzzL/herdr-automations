@@ -253,6 +253,7 @@ automations:
     agent_args: ["--verbose"]               # optional, verbatim agent flags
     timeout_minutes: 60           # optional bound on the run
     catch_up_minutes: 120         # how late a sleep-delayed run may still start; -1 never
+    close_workspace: on-success   # optional: close a done run's workspace; never (default)
     disabled: true                # optional: keep it, don't schedule it
 ```
 
@@ -354,6 +355,12 @@ branch, so the only trace a run leaves is its line in `history.jsonl`.
 is still open is a run nobody has looked at, which makes the Herdr sidebar the inbox.
 Closing it is how you say you're done.
 
+For a chore whose successful runs need no reading, `close_workspace: on-success`
+closes the workspace once the run is recorded `done` (not with `workspace: existing`).
+Failed, cancelled and timed-out runs stay open, and so does a run whose agent waits on
+you. The worktree stays on disk for `cleanup`
+([ADR 0012](docs/adr/0012-a-successful-run-may-close-its-workspace.md)).
+
 `herdr-automations cleanup` removes only the ones whose work already landed — the
 branch is an ancestor of the default branch, so either it was merged or the agent
 produced no commit at all. Anything with a workspace still open, or commits that
@@ -408,6 +415,8 @@ Design decisions live in [`docs/adr/`](docs/adr/); the app backend is
   appear on next open
 - **Agents under hc** are limited to those that report their state to herdr-core;
   OpenCode does not yet. `codex` is allowed but untested
+- **`close_workspace`** is tested against fakes; the Herdr and hc calls it makes were
+  measured by hand, not yet through a full scheduled run. Not settable from the panel
 - **The panel finds the CLI** on `PATH`, else `~/.local/bin`; installed anywhere else, it
   shows an error
 - **Installing the panel means cloning `main` and `tabs`** until Herdr makes panel buttons

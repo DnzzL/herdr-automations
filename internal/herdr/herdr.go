@@ -285,6 +285,11 @@ func (c Client) AgentWait(target string, timeout time.Duration) error {
 // once you've reviewed and closed it, not a failure worth a stack trace.
 var ErrGone = errors.New("workspace already closed")
 
+// WorkspaceClose closes a workspace. Its worktree and files stay on disk.
+func (c Client) WorkspaceClose(workspaceID string) error {
+	return c.run(nil, "workspace", "close", workspaceID)
+}
+
 // Focus brings a run's workspace to the front, then its agent pane when one
 // is known — the "jump to what this automation did" move.
 func (c Client) Focus(workspaceID, paneID string) error {

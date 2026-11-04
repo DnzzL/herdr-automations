@@ -62,7 +62,8 @@ sorted into what can go and what stays.
 **Workspace** on its own is Herdr's: the thing with an ID that you can close.
 Closing one is the gesture that cancels a run — and an open one is the only
 durable signal that nobody has read a run yet, which is why `cleanup` never runs
-on a schedule.
+on a schedule. `close_workspace: on-success` is the automation's author saying its
+done runs need no reading (ADR 0012).
 
 **Catch-up window** is how late an occurrence may still start.
 `catch_up_minutes: -1` means "only on time", not "never at all".

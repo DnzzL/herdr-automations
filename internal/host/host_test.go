@@ -25,6 +25,7 @@ type fakeOps struct {
 	paneRun         func(paneID string, command ...string) error
 	paneRead        func(paneID string, lines int) (string, error)
 	lookPath        func(file string) error
+	workspaceClose  func(workspaceID string) error
 
 	// session is what In bound the fake to, read by a test at call time to
 	// see which session a call was made in. current answers CurrentSession.
@@ -36,6 +37,18 @@ type fakeOps struct {
 	pending int
 	waits   int
 	reads   int
+	closed  []string
+	// closedIn is the session each close was aimed at.
+	closedIn []string
+}
+
+func (f *fakeOps) WorkspaceClose(workspaceID string) error {
+	f.closed = append(f.closed, workspaceID)
+	f.closedIn = append(f.closedIn, f.session)
+	if f.workspaceClose == nil {
+		return nil
+	}
+	return f.workspaceClose(workspaceID)
 }
 
 func (f *fakeOps) WorktreeCreate(repo, branch, label string) (string, string, error) {
@@ -370,5 +383,43 @@ func TestARunNamingNoSessionHappensWhereItWasTriggered(t *testing.T) {
 	}
 	if ops.session != "" || s.HerdrSession != "alt" {
 		t.Fatalf("bound to %q, session = %+v; want unbound, recorded as alt", ops.session, s)
+	}
+}
+
+// ── closing a done run's workspace (ADR 0012) ───────────────────────
+
+func TestCloseClosesTheRunsWorkspaceInItsSession(t *testing.T) {
+	ops := &fakeOps{agentStatus: func(string) (string, error) { return "idle", nil }}
+	h := &live{ops: ops, knobs: fast()}
+	s := Session{WorkspaceID: "w1", PaneID: "w1:p1", HerdrSession: "auto"}
+	if err := h.Close(s, config.Automation{Prompt: "p"}); err != nil {
+		t.Fatal(err)
+	}
+	if len(ops.closed) != 1 || ops.closed[0] != "w1" || ops.closedIn[0] != "auto" {
+		t.Fatalf("closed %q in %q, want w1 in auto", ops.closed, ops.closedIn)
+	}
+}
+
+// herdr's agent wait counts blocked as settled, so a run waiting on a person
+// is recorded done: its workspace is the one place that question is asked.
+func TestCloseLeavesAnAgentWaitingOnAPerson(t *testing.T) {
+	ops := &fakeOps{agentStatus: func(string) (string, error) { return "blocked", nil }}
+	h := &live{ops: ops, knobs: fast()}
+	if err := h.Close(Session{WorkspaceID: "w1", PaneID: "w1:p1"}, config.Automation{Prompt: "p"}); err == nil {
+		t.Fatal("want an error saying why the workspace stays open")
+	}
+	if len(ops.closed) != 0 {
+		t.Fatalf("closed %q under a blocked agent", ops.closed)
+	}
+}
+
+func TestCloseCountsAWorkspaceAlreadyGoneAsClosed(t *testing.T) {
+	ops := &fakeOps{
+		agentStatus:    func(string) (string, error) { return "idle", nil },
+		workspaceClose: func(string) error { return apiErr("workspace close", herdr.CodeWorkspaceGone) },
+	}
+	h := &live{ops: ops, knobs: fast()}
+	if err := h.Close(Session{WorkspaceID: "w1", PaneID: "w1:p1"}, config.Automation{Prompt: "p"}); err != nil {
+		t.Fatalf("want nil for a workspace already closed, got %v", err)
 	}
 }

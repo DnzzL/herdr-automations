@@ -22,6 +22,8 @@ type ops interface {
 	AgentStatus(target string) (string, error)
 	AgentWait(target string, timeout time.Duration) error
 
+	WorkspaceClose(workspaceID string) error
+
 	PaneRun(paneID string, command ...string) error
 	PaneRead(paneID string, lines int) (string, error)
 

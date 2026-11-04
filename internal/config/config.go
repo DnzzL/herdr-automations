@@ -37,6 +37,15 @@ const (
 	WorkspaceRoot     Workspace = "root"     // workspace on the repo root
 )
 
+// CloseWorkspace says whether a run closes its workspace once it is done
+// (ADR 0012). The open workspace is otherwise the sign nobody read the run.
+type CloseWorkspace string
+
+const (
+	CloseNever     CloseWorkspace = "never"      // leave it for a person (ADR 0001)
+	CloseOnSuccess CloseWorkspace = "on-success" // close it once the run is done
+)
+
 // Backend is the Herdr a run is launched in: the TUI's server, or herdr-core
 // behind the desktop app. The two share no agents (ADR 0011).
 type Backend string
@@ -86,6 +95,8 @@ type Automation struct {
 	// Session is the Herdr session the run happens in, whoever triggers it.
 	// Empty means the session of the process running it (ADR 0010).
 	Session string `yaml:"session,omitempty"`
+	// CloseWorkspace closes a done run's workspace; failures stay open.
+	CloseWorkspace CloseWorkspace `yaml:"close_workspace,omitempty"`
 	// Disabled keeps the entry in the file but out of the scheduler.
 	Disabled bool `yaml:"disabled,omitempty"`
 
@@ -133,6 +144,9 @@ func (a *Automation) applyDefaults() {
 	if a.Workspace == "" {
 		a.Workspace = WorkspaceWorktree
 	}
+	if a.CloseWorkspace == "" {
+		a.CloseWorkspace = CloseNever
+	}
 	if a.Agent == "" {
 		a.Agent = "claude"
 	}
@@ -176,6 +190,13 @@ func (a *Automation) validate(backend Backend) error {
 	}
 	if a.Workspace != WorkspaceExisting && a.WorkspaceID != "" {
 		return fmt.Errorf("%s: workspace_id requires existing mode", a.Name)
+	}
+	if a.CloseWorkspace != "" && a.CloseWorkspace != CloseNever && a.CloseWorkspace != CloseOnSuccess {
+		return fmt.Errorf("%s: close_workspace must be never or on-success, got %q", a.Name, a.CloseWorkspace)
+	}
+	// Closing a run's tab can close the workspace it shares with others.
+	if a.CloseWorkspace == CloseOnSuccess && a.Workspace == WorkspaceExisting {
+		return fmt.Errorf("%s: close_workspace: on-success would close the shared workspace; it needs worktree or root", a.Name)
 	}
 	// The name becomes a directory under Herdr's config dir; whether that
 	// session is running is a 3am fact, not a load-time one.

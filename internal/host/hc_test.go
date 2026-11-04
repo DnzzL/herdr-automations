@@ -2,6 +2,7 @@ package host
 
 import (
 	"errors"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -21,6 +22,18 @@ type fakeHC struct {
 	term     hc.Terminal
 	runErr   error
 	delay    time.Duration // per Wait
+	calls    []string      // kill and rm, with their address
+	killErr  error
+}
+
+func (f *fakeHC) Kill(address string) error {
+	f.calls = append(f.calls, "kill "+address)
+	return f.killErr
+}
+
+func (f *fakeHC) Rm(address string) error {
+	f.calls = append(f.calls, "rm "+address)
+	return nil
 }
 
 func (f *fakeHC) Run(cwd string, labels map[string]string, argv []string) (string, error) {
@@ -194,5 +207,24 @@ func TestHCDo(t *testing.T) {
 				t.Fatalf("want %q, got %v", c.want, err)
 			}
 		})
+	}
+}
+
+// The app removes a space once its terminal is killed (measured 2026-11-04);
+// rm keeps the finished terminal out of hc ls --all.
+func TestHCCloseKillsThenRemovesTheRunsTerminal(t *testing.T) {
+	f := &fakeHC{}
+	if err := newHCTest(f).Close(Session{WorkspaceID: "sp1", PaneID: "t7"}, hcAutomation()); err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(f.calls, "|"); got != "kill t7|rm t7" {
+		t.Fatalf("calls %q", got)
+	}
+}
+
+func TestHCCloseCountsATerminalAlreadyGoneAsClosed(t *testing.T) {
+	f := &fakeHC{killErr: fmt.Errorf("hc kill: no terminal: %w", hc.ErrNotFound)}
+	if err := newHCTest(f).Close(Session{WorkspaceID: "sp1", PaneID: "t7"}, hcAutomation()); err != nil {
+		t.Fatalf("want nil for a terminal already gone, got %v", err)
 	}
 }

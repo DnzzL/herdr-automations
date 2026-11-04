@@ -4,6 +4,9 @@ What changed for someone using the plugin. Dates are release dates.
 
 ## Unreleased
 
+- `close_workspace: on-success` closes a run's workspace once it is recorded
+  `done`, under both backends. Failed runs, and runs whose agent waits on you,
+  stay open; the worktree stays on disk for `cleanup`. Default `never`.
 - GitHub Copilot runs under `backend: hc`, and the panel's form offers it. Its
   prompt goes in through `-i` (a bare argument is refused, and `-p` would exit
   after one answer). Trust `~/.herdr/worktrees` in Copilot once, or a run in a

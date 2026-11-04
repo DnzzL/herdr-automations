@@ -39,6 +39,7 @@ automations:
     agent_args: ["--verbose"]               # optional, verbatim agent flags
     timeout_minutes: 60           # optional, default 60
     catch_up_minutes: 120         # optional: how late a sleep-delayed run may start; -1 never
+    # close_workspace: on-success # close a done run's workspace (not with existing); default never
     # disabled: true              # keep the entry, stop scheduling it
 ```
 
