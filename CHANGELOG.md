@@ -2,11 +2,12 @@
 
 What changed for someone using the plugin. Dates are release dates.
 
-## Unreleased
+## v0.12.1 — 2026-11-04
 
 - Copilot receives `mcp_config` through `--additional-mcp-config @<path>`,
   so it loads the MCP servers file instead of rejecting `--mcp-config`.
-  Other agents keep their existing flag.
+  Other agents keep their existing flag. Thanks @robertobrambila for the fix
+  and for checking it against the real Copilot CLI (#23).
 
 ## v0.12.0 — 2026-11-04
 
