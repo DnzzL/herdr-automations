@@ -429,8 +429,10 @@ Design decisions live in [`docs/adr/`](docs/adr/); the app backend is
   OpenCode does not yet. `codex` is allowed but untested
 - **`close_workspace`** is tested against fakes; the Herdr and hc calls it makes were
   measured by hand, not yet through a full scheduled run. Not settable from the panel
-- **The panel finds the CLI** on `PATH`, else `~/.local/bin`; installed anywhere else, it
-  shows an error
+- **The panel finds the CLI** on `PATH`, else `~/.local/bin` (on Windows,
+  `%LOCALAPPDATA%\Programs\herdr-automations`); installed anywhere else, it shows an error
+- **On Windows the panel saves an entry of at most ~32,000 characters** (the OS caps a
+  command line); a longer prompt is refused with a message, never cut
 - **Installing the panel means cloning `main` and `tabs`** until Herdr makes panel buttons
   data-driven; [`app/RECIPE.md`](app/RECIPE.md) walks an agent through it
 
