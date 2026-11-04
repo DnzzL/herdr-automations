@@ -135,6 +135,20 @@ func TestHCProvisionHandsCopilotItsPromptWithDashI(t *testing.T) {
 	}
 }
 
+func TestHCProvisionHandsCopilotItsMCPConfigAndPrompt(t *testing.T) {
+	f := &fakeHC{}
+	a := hcAutomation()
+	a.Agent = "copilot"
+	a.MCPConfig = "/mcp config.json"
+	a.AgentArgs = []string{"--no-ask-user"}
+	if _, err := newHCTest(f).Provision(a); err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(f.argv, "|"); got != "copilot|--additional-mcp-config|@/mcp config.json|--model|sonnet|--no-ask-user|-i|Triage the issues" {
+		t.Fatalf("argv %q", got)
+	}
+}
+
 func TestHCProvisionHandsATemplateItsTask(t *testing.T) {
 	f := &fakeHC{}
 	a := hcAutomation()

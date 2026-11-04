@@ -83,27 +83,36 @@ func TestStartDoesNotRetryARealFailure(t *testing.T) {
 }
 
 func TestStartForwardsModelAndMCPConfigAheadOfAgentArgs(t *testing.T) {
-	var got []string
-	ops := &fakeOps{agentStart: func(_, _, _ string, args []string) error {
-		got = args
-		return nil
-	}}
-	a := config.Automation{
-		Name: "n", Agent: "claude", Model: "sonnet",
-		MCPConfig: "/mcp.json", AgentArgs: []string{"--verbose"},
-	}
+	for _, tt := range []struct {
+		agent string
+		want  []string
+	}{
+		{"claude", []string{"--mcp-config", "/mcp config.json", "--model", "sonnet", "--verbose"}},
+		{"copilot", []string{"--additional-mcp-config", "@/mcp config.json", "--model", "sonnet", "--verbose"}},
+	} {
+		t.Run(tt.agent, func(t *testing.T) {
+			var got []string
+			ops := &fakeOps{agentStart: func(_, _, _ string, args []string) error {
+				got = args
+				return nil
+			}}
+			a := config.Automation{
+				Name: "n", Agent: tt.agent, Model: "sonnet",
+				MCPConfig: "/mcp config.json", AgentArgs: []string{"--verbose"},
+			}
 
-	if err := agentWorkWith(ops, a).start(Session{PaneID: "p"}); err != nil {
-		t.Fatal(err)
-	}
-	want := []string{"--mcp-config", "/mcp.json", "--model", "sonnet", "--verbose"}
-	if len(got) != len(want) {
-		t.Fatalf("args = %v, want %v", got, want)
-	}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Fatalf("args = %v, want %v", got, want)
-		}
+			if err := agentWorkWith(ops, a).start(Session{PaneID: "p"}); err != nil {
+				t.Fatal(err)
+			}
+			if len(got) != len(tt.want) {
+				t.Fatalf("args = %v, want %v", got, tt.want)
+			}
+			for i := range tt.want {
+				if got[i] != tt.want[i] {
+					t.Fatalf("args = %v, want %v", got, tt.want)
+				}
+			}
+		})
 	}
 }
 

@@ -43,7 +43,11 @@ func agentArgs(a config.Automation) []string {
 		args = append([]string{"--model", a.Model}, args...)
 	}
 	if a.MCPConfig != "" {
-		args = append([]string{"--mcp-config", a.MCPConfig}, args...)
+		flag, path := "--mcp-config", a.MCPConfig
+		if a.Agent == "copilot" {
+			flag, path = "--additional-mcp-config", "@"+path
+		}
+		args = append([]string{flag, path}, args...)
 	}
 	return args
 }
