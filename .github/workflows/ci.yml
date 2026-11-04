@@ -18,3 +18,15 @@ jobs:
       - run: go test ./...
       - name: gofmt
         run: test -z "$(gofmt -l .)"
+
+  # Windows is community-supported (ADR 0013): this job is the only proof.
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+      - run: go build ./...
+      - run: go vet ./...
+      - run: go test ./...
