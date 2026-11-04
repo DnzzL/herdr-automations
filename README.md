@@ -249,7 +249,7 @@ automations:
     model: sonnet                 # optional → --model; kinds without the flag are caught on load
     template: reviewer            # hc only, instead of agent + model: an hc template, prompt as its task
     prompt: "…"                   # OR workflow: <name>  (delegates to hwf run)
-    mcp_config: ~/.config/mcp/github.json   # optional → --mcp-config
+    mcp_config: ~/.config/mcp/github.json   # optional MCP servers JSON file; see below
     agent_args: ["--verbose"]               # optional, verbatim agent flags
     timeout_minutes: 60           # optional bound on the run
     catch_up_minutes: 120         # how late a sleep-delayed run may still start; -1 never
@@ -257,6 +257,9 @@ automations:
     disabled: true                # optional: keep it, don't schedule it
 ```
 
+For Copilot, `mcp_config` becomes `--additional-mcp-config @<path>`; the `@`
+tells Copilot to read the file rather than parse its path as inline JSON.
+Other agents still receive `--mcp-config <path>`.
 
 ### Run in a shared workspace
 

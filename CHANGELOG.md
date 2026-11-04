@@ -2,6 +2,12 @@
 
 What changed for someone using the plugin. Dates are release dates.
 
+## Unreleased
+
+- Copilot receives `mcp_config` through `--additional-mcp-config @<path>`,
+  so it loads the MCP servers file instead of rejecting `--mcp-config`.
+  Other agents keep their existing flag.
+
 ## v0.12.0 — 2026-11-04
 
 - `close_workspace: on-success` closes a run's workspace once it is recorded
