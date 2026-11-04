@@ -64,7 +64,7 @@ top to bottom:
 
 - **Dot colors**: `working` while a run of it is live and working, `blocked` while
   that run waits on you, `ansi1` when the last run failed or was missed, `dim` when
-  paused (itself or all), else `idle`. Live means a terminal labelled
+  paused (itself or all), else `ansi2` (not `idle`: the app paints it grey, like `dim`). Live means a terminal labelled
   `automation=<name>` in `terminals()`.
 - **Inbox**: finished runs (done, failed, cancelled) not yet seen. Clicking one
   marks it seen, then focuses its terminal (`pane.focus {terminal}`) if still live,
@@ -75,6 +75,8 @@ top to bottom:
 - **Delete** asks once: the button turns into "Confirm delete".
 - **Form**: every keystroke or pill re-runs `put --dry-run`, last answer wins;
   `Save` runs `put` (with `--original <name>` when editing) and opens the detail.
+  `put` replaces only the keys it is sent, so the form sends every field it shows,
+  empty ones included, and nothing else.
 - **Toasts**: a run that turns `failed` or `missed` after the panel started posts
   `notify` (error / warning); clicking it focuses the run's terminal when live.
 - **Refresh**: on a change in the config folder or the history folder

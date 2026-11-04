@@ -48,7 +48,7 @@ Usage:
   herdr-automations history [name] [--json]
                                      Show recent runs
   herdr-automations put [--original <name>] [--dry-run] < automation.json
-                                     Write one automation (the app panel's form)
+                                     Write one automation; keys not sent are kept (the app panel's form)
   herdr-automations rm <name>        Delete one automation
   herdr-automations seen <run-id|--all>
                                      Mark a run, or every finished run, as opened (the app panel's inbox)
@@ -372,9 +372,22 @@ func putCmd(args []string) error {
 	} else if len(args) != 0 {
 		return fmt.Errorf("usage: herdr-automations put [--original <name>] [--dry-run] < automation.json")
 	}
-	var in api.Automation
-	if err := json.NewDecoder(os.Stdin).Decode(&in); err != nil {
+	var raw json.RawMessage
+	if err := json.NewDecoder(os.Stdin).Decode(&raw); err != nil {
 		return fmt.Errorf("read automation JSON: %w", err)
+	}
+	var in api.Automation
+	var sent map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &in); err != nil {
+		return fmt.Errorf("read automation JSON: %w", err)
+	}
+	if err := json.Unmarshal(raw, &sent); err != nil {
+		return fmt.Errorf("read automation JSON: %w", err)
+	}
+	// Only the keys the caller sent replace the entry's; the rest stay.
+	given := make([]string, 0, len(sent))
+	for k := range sent {
+		given = append(given, k)
 	}
 	a := config.Automation{
 		Name: in.Name, Cron: in.Cron, Repo: in.Repo, Workspace: in.Workspace, WorkspaceID: in.WorkspaceID,
@@ -382,7 +395,7 @@ func putCmd(args []string) error {
 		MCPConfig: in.MCPConfig, AgentArgs: in.AgentArgs, TimeoutMinutes: in.TimeoutMinutes,
 		CatchUpMinutes: in.CatchUpMinutes, Disabled: in.Disabled,
 	}
-	return printJSON(config.Put(original, a, dryRun))
+	return printJSON(config.Put(original, a, given, dryRun))
 }
 
 // runDetached starts `run <name>` in its own session and returns at once. The

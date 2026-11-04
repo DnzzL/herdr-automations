@@ -35,7 +35,7 @@ automations:
 func TestPutReplacesOneEntryAndKeepsTheRest(t *testing.T) {
 	withConfig(t, commented)
 	a := Automation{Name: "triage", Cron: "0 8 * * 1-5", Repo: "/x", Prompt: "new prompt"}
-	if res, err := Put("triage", a, false); err != nil || res.Problem != "" {
+	if res, err := Put("triage", a, nil, false); err != nil || res.Problem != "" {
 		t.Fatalf("put: %v %q", err, res.Problem)
 	}
 	text := fileText(t)
@@ -46,10 +46,40 @@ func TestPutReplacesOneEntryAndKeepsTheRest(t *testing.T) {
 	}
 }
 
+// The panel's form knows only some keys. An edit must not drop the others:
+// a paused entry edited in the panel came back resumed.
+func TestPutKeepsTheKeysItWasNotGiven(t *testing.T) {
+	withConfig(t, `automations:
+  - name: triage
+    cron: "0 9 * * 1-5"
+    repo: /x
+    model: opus
+    prompt: p
+    agent_args: [--verbose]   # keep me
+    catch_up_minutes: 30
+    disabled: true
+`)
+	a := Automation{Name: "triage", Cron: "0 8 * * 1-5", Repo: "/x", Prompt: "new prompt"}
+	if res, err := Put("triage", a, []string{"name", "cron", "repo", "model", "prompt"}, false); err != nil || res.Problem != "" {
+		t.Fatalf("put: %v %q", err, res.Problem)
+	}
+	cfg, _ := Load()
+	got := cfg.Find("triage")
+	if got == nil || !got.Disabled || got.CatchUpMinutes != 30 || len(got.AgentArgs) != 1 {
+		t.Fatalf("lost keys it was not given: %+v", got)
+	}
+	if got.Model != "" || got.Prompt != "new prompt" || got.Cron != "0 8 * * 1-5" {
+		t.Fatalf("given keys not applied (model must be cleared): %+v", got)
+	}
+	if !strings.Contains(fileText(t), "# keep me") {
+		t.Errorf("an untouched key lost its comment:\n%s", fileText(t))
+	}
+}
+
 func TestPutAppendsANewEntry(t *testing.T) {
 	withConfig(t, commented)
 	a := Automation{Name: "digest", Cron: "0 17 * * 5", Repo: "/x", Prompt: "sum up"}
-	if res, err := Put("", a, false); err != nil || res.Problem != "" {
+	if res, err := Put("", a, nil, false); err != nil || res.Problem != "" {
 		t.Fatalf("put: %v %q", err, res.Problem)
 	}
 	cfg, _ := Load()
@@ -62,7 +92,7 @@ func TestPutRefusesWhatWouldNotLoadAndWritesNothing(t *testing.T) {
 	withConfig(t, commented)
 	before := fileText(t)
 	a := Automation{Name: "triage", Cron: "nope", Repo: "/x", Prompt: "p"}
-	res, err := Put("triage", a, false)
+	res, err := Put("triage", a, nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,7 +107,7 @@ func TestPutRefusesWhatWouldNotLoadAndWritesNothing(t *testing.T) {
 func TestPutRefusesANameAlreadyTaken(t *testing.T) {
 	withConfig(t, commented)
 	a := Automation{Name: "broken", Cron: "@daily", Repo: "/x", Prompt: "p"}
-	res, err := Put("", a, false)
+	res, err := Put("", a, nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,7 +120,7 @@ func TestPutDryRunPreviewsAndWritesNothing(t *testing.T) {
 	withConfig(t, commented)
 	before := fileText(t)
 	a := Automation{Name: "triage", Cron: "0 8 * * 1-5", Repo: "/x", Prompt: "p"}
-	res, err := Put("triage", a, true)
+	res, err := Put("triage", a, nil, true)
 	if err != nil || res.Problem != "" {
 		t.Fatalf("put: %v %q", err, res.Problem)
 	}

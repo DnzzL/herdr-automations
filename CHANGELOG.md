@@ -8,6 +8,10 @@ What changed for someone using the plugin. Dates are release dates.
   prompt goes in through `-i` (a bare argument is refused, and `-p` would exit
   after one answer). Trust `~/.herdr/worktrees` in Copilot once, or a run in a
   new worktree waits on Copilot's folder question.
+- Editing an automation in the panel no longer drops what the form does not
+  show: a paused automation stays paused, and `agent_args`, `catch_up_minutes`
+  and `session` are kept. `put` now replaces only the keys it is sent.
+- In the panel, an active automation's dot is green rather than grey.
 
 ## v0.11.3 — 2026-10-30
 

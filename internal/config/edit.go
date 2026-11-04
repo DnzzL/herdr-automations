@@ -24,7 +24,11 @@ type PutResult struct {
 
 // Put writes a, replacing the entry named original, or appending when
 // original is empty. Nothing is written when the result would not load.
-func Put(original string, a Automation, dryRun bool) (PutResult, error) {
+//
+// given names the keys the caller sets; the replaced entry keeps every other
+// key as it was, so a form that knows only some keys cannot drop the rest. A
+// given key a leaves empty is removed. nil replaces the whole entry.
+func Put(original string, a Automation, given []string, dryRun bool) (PutResult, error) {
 	doc, err := readDoc()
 	if err != nil {
 		return PutResult{}, err
@@ -42,7 +46,9 @@ func Put(original string, a Automation, dryRun bool) (PutResult, error) {
 	if err := node.Encode(a); err != nil {
 		return PutResult{}, err
 	}
-	if at >= 0 {
+	if at >= 0 && given != nil {
+		setKeys(seq.Content[at], &node, given)
+	} else if at >= 0 {
 		node.HeadComment = seq.Content[at].HeadComment
 		seq.Content[at] = &node
 	} else {
@@ -169,6 +175,30 @@ func valueOf(m *yaml.Node, key string) *yaml.Node {
 		}
 	}
 	return nil
+}
+
+// setKeys copies keys from src into dst in place: replaced where dst has them,
+// appended where it does not, removed where src has none. dst's other keys,
+// their order and their comments stay.
+func setKeys(dst, src *yaml.Node, keys []string) {
+	for _, key := range keys {
+		v := valueOf(src, key)
+		at := -1
+		for i := 0; i+1 < len(dst.Content); i += 2 {
+			if dst.Content[i].Value == key {
+				at = i
+				break
+			}
+		}
+		switch {
+		case at >= 0 && v != nil:
+			dst.Content[at+1] = v
+		case at >= 0:
+			dst.Content = append(dst.Content[:at], dst.Content[at+2:]...)
+		case v != nil:
+			dst.Content = append(dst.Content, &yaml.Node{Kind: yaml.ScalarNode, Value: key}, v)
+		}
+	}
 }
 
 // setBool writes key: true, or removes the key for false so a resumed entry

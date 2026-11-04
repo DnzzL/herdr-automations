@@ -251,7 +251,7 @@ export default class Automations extends View {
   dot(a, t) {
     const live = this.liveFor(a.name);
     const color = live ? (live.status === "blocked" ? t.blocked : t.working)
-      : a.disabled || this.list.paused ? t.dim : a.last?.status === "failed" || a.last?.status === "missed" ? t.ansi1 : t.idle;
+      : a.disabled || this.list.paused ? t.dim : a.last?.status === "failed" || a.last?.status === "missed" ? t.ansi1 : t.ansi2;
     return div().size(8).rounded(4).flex_none().bg(color);
   }
 
