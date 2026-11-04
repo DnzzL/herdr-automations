@@ -2,6 +2,17 @@
 
 What changed for someone using the plugin. Dates are release dates.
 
+## v0.13.0 — unreleased
+
+- Windows support, as the desktop app's backend: one PowerShell command
+  installs or updates it, `service install` starts the scheduler at login, and
+  the panel works as on macOS and Linux. Runs always go through hc there; a
+  `backend: herdr` line is reported. Community-supported: built and tested in CI,
+  never by hand. Thanks @HatlerRyan for asking and for the prototype (#21).
+- The panel saves automations through the new `put --entry`, without `sh`. On
+  Windows, a prompt too long for the command line fails with a message instead
+  of being cut.
+
 ## v0.12.1 — 2026-11-04
 
 - Copilot receives `mcp_config` through `--additional-mcp-config @<path>`,

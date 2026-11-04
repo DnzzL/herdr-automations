@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"syscall"
 	"time"
 
@@ -95,7 +96,10 @@ func Run(standby bool) error {
 			if standby {
 				installed = hostpath.InstalledBinary()
 			}
-			if shouldRelaunch(standby, stamp, exe, installed) && !runs.Busy() {
+			// Windows has no service manager to relaunch a scheduler that
+			// leaves: there, a changed binary is re-executed below instead.
+			supervised := standby && runtime.GOOS != "windows"
+			if shouldRelaunch(supervised, stamp, exe, installed) && !runs.Busy() {
 				log.Printf("running %s, installed is %s: leaving for the service to relaunch", exe, installed)
 				return nil
 			}
@@ -260,16 +264,14 @@ func recordMissed(name string, count int, why string) {
 
 // restart re-executes the daemon so a plugin upgrade takes effect without
 // waiting for the Herdr server to be restarted.
-// execve is syscall.Exec, swappable so a test can make the re-exec fail.
-var execve = syscall.Exec
-
 func restart(runs *runner.Runner, exe, why string) {
 	if runs.Busy() {
 		return // let the in-flight run finish; we'll notice again next tick
 	}
 	log.Printf("%s, re-executing %s", why, exe)
 	// No release here: the lock's descriptor is close-on-exec, so a successful
-	// exec drops it for the new image, and a failed one leaves it held.
+	// exec drops it for the new image (on Windows, exiting drops it for the
+	// copy), and a failed one leaves it held.
 	if err := execve(exe, os.Args, os.Environ()); err != nil {
 		log.Printf("re-exec failed, continuing with the old build: %v", err)
 	}

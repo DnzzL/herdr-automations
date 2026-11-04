@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -55,6 +56,21 @@ const (
 	BackendHerdr Backend = "herdr" // the TUI's server; the default
 	BackendHC    Backend = "hc"    // herdr-core, shown by the desktop app
 )
+
+// goos is the platform the backend rules follow; a variable so the Windows
+// rules are tested on every runner (ADR 0013).
+var goos = runtime.GOOS
+
+// Effective is the backend b runs on, auto still to settle: on Windows always
+// hc, since there is no Herdr TUI there, only the desktop app (ADR 0013).
+// Everything that picks a backend for a run, or checks an entry against one,
+// goes through it; the Config keeps the line as written.
+func (b Backend) Effective() Backend {
+	if goos == "windows" {
+		return BackendHC
+	}
+	return b
+}
 
 // Automation is one scheduled entry: a prompt (or delegated workflow) fired
 // on a cron schedule against an agent in a provisioned workspace.
@@ -107,7 +123,8 @@ type Automation struct {
 
 type Config struct {
 	// Backend picks where runs are launched. Defaults to herdr, so a file
-	// written before backends existed keeps running where it always did.
+	// written before backends existed keeps running where it always did. On
+	// Windows it stays as written, empty included; see Effective.
 	Backend Backend `yaml:"backend,omitempty"`
 	// Paused holds every automation, on top of each one's own Disabled, so
 	// resuming restores exactly what was paused before.
@@ -167,6 +184,7 @@ func (a Automation) CatchUp() time.Duration {
 }
 
 func (a *Automation) validate(backend Backend) error {
+	backend = backend.Effective()
 	if a.Name == "" {
 		return fmt.Errorf("automation without a name")
 	}
@@ -314,14 +332,29 @@ func parse(raw []byte) (*Config, error) {
 		return nil, fmt.Errorf("parse %s: %w", Path(), err)
 	}
 	switch doc.Backend {
-	case "":
-		doc.Backend = BackendHerdr
-	case BackendAuto, BackendHerdr, BackendHC:
+	case "", BackendAuto, BackendHerdr, BackendHC:
 	default:
 		return nil, fmt.Errorf("%s: backend must be herdr, hc or auto, got %q", Path(), doc.Backend)
 	}
 
 	cfg := &Config{Backend: doc.Backend, Paused: doc.Paused}
+	// Kept as written on Windows, so a save there does not rewrite a line
+	// shared with a Mac; Effective settles it (ADR 0013).
+	if doc.Backend == "" && goos != "windows" {
+		cfg.Backend = BackendHerdr
+	}
+	// An explicit herdr would launch every run into a server that does not
+	// exist on Windows. Said once on the backend line, the entries themselves
+	// still run on hc.
+	if goos == "windows" && doc.Backend == BackendHerdr {
+		var at struct {
+			Backend yaml.Node `yaml:"backend"`
+		}
+		_ = yaml.Unmarshal(raw, &at) // parsed once already; only the line is wanted
+		cfg.Invalid = append(cfg.Invalid, Diagnostic{
+			Line: at.Backend.Line, Message: "the herdr backend is unavailable on windows; use hc",
+		})
+	}
 	seen := map[string]bool{}
 	for _, node := range doc.Automations {
 		var a Automation
