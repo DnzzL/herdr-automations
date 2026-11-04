@@ -164,7 +164,7 @@ func hcArgv(a config.Automation) ([]string, error) {
 		return nil, fmt.Errorf("agent %q cannot take its prompt under backend: hc yet", a.Agent)
 	}
 	argv := append([]string{a.Agent}, agentArgs(a)...)
-	return append(argv, a.Prompt), nil
+	return append(argv, config.PromptArgs(a.Agent, a.Prompt)...), nil
 }
 
 var appSlugRe = regexp.MustCompile(`[^A-Za-z0-9._-]+`)

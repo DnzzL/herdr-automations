@@ -17,7 +17,7 @@ const PRESETS = [
 ];
 // The agents hc can hand a prompt to and watch to the end (config.KindTakesPromptArg).
 // The form offers the ones installed here.
-const AGENTS = ["claude", "codex", "pi"];
+const AGENTS = ["claude", "codex", "pi", "copilot"];
 const WORKSPACES = [["worktree", "New worktree"], ["root", "Repo root"], ["existing", "Existing space"]];
 const FINISHED = new Set(["done", "failed", "cancelled"]);
 

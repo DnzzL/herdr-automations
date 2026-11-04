@@ -108,6 +108,20 @@ func TestHCProvisionExistingOpensATabInTheNamedSpace(t *testing.T) {
 	}
 }
 
+// copilot rejects a bare prompt ("Invalid command format") and -p would exit
+// after one answer; -i keeps it interactive so hc can watch it finish.
+func TestHCProvisionHandsCopilotItsPromptWithDashI(t *testing.T) {
+	f := &fakeHC{}
+	a := hcAutomation()
+	a.Agent = "copilot"
+	if _, err := newHCTest(f).Provision(a); err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(f.argv, "|"); got != "copilot|--model|sonnet|-i|Triage the issues" {
+		t.Fatalf("argv %q", got)
+	}
+}
+
 func TestHCProvisionHandsATemplateItsTask(t *testing.T) {
 	f := &fakeHC{}
 	a := hcAutomation()
