@@ -416,7 +416,7 @@ func putCmd(args []string) error {
 	return printJSON(config.Put(original, a, given, dryRun))
 }
 
-// runDetached starts `run <name>` detached (see detach.Cmd) and returns at once. The
+// runDetached starts `run <name>` detached and returns at once. The
 // panel cannot wait an hour on exec, and the run must outlive the app.
 func runDetached(args []string) error {
 	if len(args) != 1 {

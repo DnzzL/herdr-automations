@@ -14,11 +14,10 @@ import (
 // acquireLock keeps a single scheduler alive per machine. Two daemons would
 // fire every automation twice.
 //
-// The lock is an OS file lock on the pidfile (flock on Unix, LockFileEx on
-// Windows), not the PID it contains. The OS drops it when the holder exits,
-// however it exits, so a daemon killed with the Herdr server cannot leave a
-// lock behind. Trusting the PID instead would strand the scheduler: the
-// startup hook runs again on every
+// The lock is an OS file lock on the pidfile, not the PID it contains. The
+// OS drops it when the holder exits, however it exits, so a daemon
+// killed with the Herdr server cannot leave a lock behind. Trusting the PID
+// instead would strand the scheduler: the startup hook runs again on every
 // server restart, and by then the recorded PID may belong to an unrelated
 // process, which looks exactly like a running daemon. The PID is still written,
 // for humans reading the file and for the error below, but never decides

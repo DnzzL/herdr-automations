@@ -1,7 +1,7 @@
 // Package service installs the daemon as a user service: a launchd agent on
-// macOS, a systemd user unit on Linux, a value under the user's Run registry
-// key on Windows. The Herdr desktop app has no plugin
-// startup hook, and a scheduler must fire with no window open (ADR 0011).
+// macOS, a systemd user unit on Linux, a Run registry value on Windows. The
+// Herdr desktop app has no plugin startup hook, and a scheduler must fire with
+// no window open (ADR 0011).
 package service
 
 import (
