@@ -134,7 +134,7 @@ in the app instead, with a panel of their own beside Files and Changes (pictured
   meanwhile is logged as skipped and never replayed when you switch back
 
 ```yaml
-backend: hc        # herdr (the default), hc, or auto: hc when herdr-core answers
+backend: hc        # herdr (the default), hc, or auto: hc when herdr-core answers. Windows: always hc
 automations:
   - name: issue-triage
     template: reviewer   # hc only: a template brings its own agent, model and instructions
@@ -247,7 +247,7 @@ Everything goes through the `herdr` CLI — the same socket API agents themselve
 ## Full entry reference
 
 ```yaml
-backend: hc                       # optional: herdr (default) | hc (the desktop app) | auto
+backend: hc                       # optional: herdr (default) | hc (the desktop app) | auto; on Windows only hc (the default there)
 paused: true                      # optional: hold every automation (the panel's switch)
 automations:
   - name: issue-triage            # unique, kebab-case
