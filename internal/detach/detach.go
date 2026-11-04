@@ -21,6 +21,6 @@ func Start(log, exe string, args, env []string) error {
 	cmd := exec.Command(exe, args...)
 	cmd.Env = env
 	cmd.Stdout, cmd.Stderr = logf, logf
-	Cmd(cmd)
+	setDetached(cmd)
 	return cmd.Start()
 }
