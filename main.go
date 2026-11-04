@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -427,18 +426,7 @@ func runDetached(args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(config.StateDir(), 0o755); err != nil {
-		return err
-	}
-	logf, err := os.OpenFile(filepath.Join(config.StateDir(), "manual-runs.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
-	if err != nil {
-		return err
-	}
-	defer logf.Close()
-	cmd := exec.Command(exe, "run", args[0])
-	cmd.Stdout, cmd.Stderr = logf, logf
-	detach.Cmd(cmd)
-	return cmd.Start()
+	return detach.Start(filepath.Join(config.StateDir(), "manual-runs.log"), exe, []string{"run", args[0]}, nil)
 }
 
 // relaunchDetached is what the Windows login entry runs: the scheduler again,

@@ -2,7 +2,6 @@ package daemon
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 
 	"github.com/DnzzL/herdr-automations/internal/config"
@@ -19,17 +18,5 @@ func StartStandby(exe string) error {
 // startDetached starts exe detached, its output appended to daemon.log: with
 // no console and no service manager, nothing else keeps the log.
 func startDetached(exe string, args, env []string) error {
-	if err := os.MkdirAll(config.StateDir(), 0o755); err != nil {
-		return err
-	}
-	logf, err := os.OpenFile(filepath.Join(config.StateDir(), "daemon.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
-	if err != nil {
-		return err
-	}
-	defer logf.Close()
-	cmd := exec.Command(exe, args...)
-	cmd.Env = env
-	cmd.Stdout, cmd.Stderr = logf, logf
-	detach.Cmd(cmd)
-	return cmd.Start()
+	return detach.Start(filepath.Join(config.StateDir(), "daemon.log"), exe, args, env)
 }
