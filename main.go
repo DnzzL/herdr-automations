@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -47,7 +48,7 @@ Usage:
                                      Resume what pause stopped
   herdr-automations history [name] [--json]
                                      Show recent runs
-  herdr-automations put [--original <name>] [--dry-run] < automation.json
+  herdr-automations put [--original <name>] [--dry-run] [--entry <json> | < automation.json]
                                      Write one automation; keys not sent are kept (the app panel's form)
   herdr-automations rm <name>        Delete one automation
   herdr-automations seen <run-id|--all>
@@ -362,18 +363,31 @@ func pauseCmd(args []string, disabled bool) error {
 	return nil
 }
 
-// putCmd writes one automation read as JSON on stdin and prints what Put
-// found. A refused entry is an answer, not an error: the form shows Problem.
+// putCmd writes one automation read as JSON from --entry, else stdin, and
+// prints what Put found. A refused entry is an answer, not an error: the form
+// shows Problem. --entry exists because the app's exec has no stdin; the panel
+// checks Windows' command-line cap itself, since an entry over it never
+// reaches this process.
 func putCmd(args []string) error {
 	args, dryRun := withoutFlag(args, "--dry-run")
-	original := ""
-	if len(args) == 2 && args[0] == "--original" {
-		original = args[1]
-	} else if len(args) != 0 {
-		return fmt.Errorf("usage: herdr-automations put [--original <name>] [--dry-run] < automation.json")
+	original, entry, fromArg := "", "", false
+	for len(args) >= 2 && (args[0] == "--original" || args[0] == "--entry") {
+		if args[0] == "--original" {
+			original = args[1]
+		} else {
+			entry, fromArg = args[1], true
+		}
+		args = args[2:]
+	}
+	if len(args) != 0 {
+		return fmt.Errorf("usage: herdr-automations put [--original <name>] [--dry-run] [--entry <json> | < automation.json]")
+	}
+	var src io.Reader = os.Stdin
+	if fromArg {
+		src = strings.NewReader(entry)
 	}
 	var raw json.RawMessage
-	if err := json.NewDecoder(os.Stdin).Decode(&raw); err != nil {
+	if err := json.NewDecoder(src).Decode(&raw); err != nil {
 		return fmt.Errorf("read automation JSON: %w", err)
 	}
 	var in api.Automation

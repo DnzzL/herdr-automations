@@ -20,6 +20,12 @@ const PRESETS = [
 const AGENTS = ["claude", "codex", "pi", "copilot"];
 const WORKSPACES = [["worktree", "New worktree"], ["root", "Repo root"], ["existing", "Existing space"]];
 const FINISHED = new Set(["done", "failed", "cancelled"]);
+// The herdr API names no platform; a Windows home starts with a drive letter.
+const windows = () => /^[A-Za-z]:[\\/]/.test(home());
+const WINDOWS_MAX_COMMAND_LINE = 32767; // characters, the terminating NUL included
+// Upper bound of the Windows command line exec builds from argv: each argument
+// quoted, each " or \ possibly escaped by a backslash, a space between.
+const commandLineLength = (argv) => argv.reduce((n, a) => n + a.length + (a.match(/["\\]/g)?.length ?? 0) + 3, 0);
 
 const human = (cron) => PRESETS.find(([, c]) => c === cron)?.[0] ?? cron;
 const tilde = (p) => (p && p.startsWith(home()) ? "~" + p.slice(home().length) : p ?? "");
@@ -60,10 +66,13 @@ export default class Automations extends View {
     cx.timer.every(30000, (cx) => this.refresh(cx)); // next-run times and the scheduler's pid
   }
 
-  // The CLI on PATH, else where install.sh and the dev symlink put it.
+  // The CLI on PATH, else where this platform's installer puts it: install.ps1
+  // on Windows, install.sh and the dev symlink elsewhere. %LOCALAPPDATA% is
+  // assumed at its default: the herdr API exposes no environment.
   async locate() {
     try { if ((await exec("herdr-automations", ["version"])).code === 0) return "herdr-automations"; } catch {}
-    return `${home()}/.local/bin/herdr-automations`;
+    return windows() ? `${home()}\\AppData\\Local\\Programs\\herdr-automations\\herdr-automations.exe`
+      : `${home()}/.local/bin/herdr-automations`;
   }
 
   async cli(args) {
@@ -166,9 +175,14 @@ export default class Automations extends View {
   }
 
   async put(dryRun) {
-    const f = this.form, args = ["put", ...(f.original ? ["--original", f.original] : []), ...(dryRun ? ["--dry-run"] : [])];
-    // exec has no stdin: hand the JSON over through the shell.
-    const r = await exec("sh", ["-c", 'bin=$1 json=$2; shift 2; printf %s "$json" | "$bin" "$@"', "sh", this.bin, JSON.stringify(this.entry()), ...args]);
+    const f = this.form, args = ["put", ...(f.original ? ["--original", f.original] : []), ...(dryRun ? ["--dry-run"] : []),
+      "--entry", JSON.stringify(this.entry())]; // exec has no stdin
+    // Windows refuses a longer command line before the CLI starts, with a bare
+    // "filename too long": say why here. Never cut the prompt to fit.
+    const size = commandLineLength([this.bin, ...args]);
+    if (windows() && size >= WINDOWS_MAX_COMMAND_LINE)
+      throw new Error(`Too long for Windows: ${size} characters on the command line, the limit is ${WINDOWS_MAX_COMMAND_LINE - 1}. Shorten the prompt.`);
+    const r = await exec(this.bin, args);
     if (r.code !== 0) throw new Error((r.stderr || r.stdout).trim());
     return JSON.parse(r.stdout);
   }
