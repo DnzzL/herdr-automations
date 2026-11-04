@@ -16,11 +16,11 @@ import (
 // no COM, unlike Task Scheduler or a Startup-folder shortcut.
 const runKey = `Software\Microsoft\Windows\CurrentVersion\Run`
 
-// installRunValue writes the login entry, then runs it once, which starts the
+// install writes the login entry, then runs it once, which starts the
 // scheduler now. No environment is baked in: Windows gives a login process the
 // user's own PATH, and the default directories are home-relative. Nothing
 // relaunches a scheduler that dies before the next login (no supervisor).
-func installRunValue(s Spec) (string, error) {
+func install(s Spec) (string, error) {
 	k, _, err := registry.CreateKey(registry.CURRENT_USER, runKey, registry.SET_VALUE)
 	if err != nil {
 		return "", fmt.Errorf("open HKCU\\%s: %w", runKey, err)
@@ -42,9 +42,9 @@ func runCommand(exe string) string {
 	return `"` + exe + `" daemon --standby ` + FromLogin
 }
 
-// uninstallRunValue removes the login entry and stops the scheduler, as
+// uninstall removes the login entry and stops the scheduler, as
 // launchd and systemd do on uninstall.
-func uninstallRunValue() error {
+func uninstall() error {
 	k, err := registry.OpenKey(registry.CURRENT_USER, runKey, registry.SET_VALUE)
 	if err == nil {
 		err = k.DeleteValue(Label)
@@ -69,7 +69,7 @@ func uninstallRunValue() error {
 	return nil
 }
 
-func runValueExists() bool {
+func installed() bool {
 	k, err := registry.OpenKey(registry.CURRENT_USER, runKey, registry.QUERY_VALUE)
 	if err != nil {
 		return false

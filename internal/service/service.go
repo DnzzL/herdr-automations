@@ -8,12 +8,7 @@ import (
 	"bytes"
 	"encoding/xml"
 	"fmt"
-	"os"
-	"os/exec"
-	"path/filepath"
-	"runtime"
 	"sort"
-	"strconv"
 	"strings"
 )
 
@@ -38,72 +33,14 @@ type Spec struct {
 // the shell's PATH, so the daemon finds hc, git and the agents, and the
 // resolved directories, so it reads the automations.yaml the CLI reads.
 func Install(program string, env map[string]string, logs string) (string, error) {
-	s := Spec{Exe: program, Logs: logs, Env: env}
-	switch runtime.GOOS {
-	case "darwin":
-		path := plistPath()
-		if err := writeFile(path, plist(s)); err != nil {
-			return "", err
-		}
-		_ = launchctl("bootout", domain()+"/"+Label) // a previous install, if any
-		return path, launchctl("bootstrap", domain(), path)
-	case "linux":
-		path := unitPath()
-		if err := writeFile(path, unit(s)); err != nil {
-			return "", err
-		}
-		if err := systemctl("daemon-reload"); err != nil {
-			return "", err
-		}
-		return path, systemctl("enable", "--now", "herdr-automations.service")
-	case "windows":
-		return installRunValue(s)
-	}
-	return "", fmt.Errorf("no service support on %s; run `herdr-automations daemon` yourself", runtime.GOOS)
+	return install(Spec{Exe: program, Logs: logs, Env: env})
 }
 
 // Uninstall stops the service and removes its file.
-func Uninstall() error {
-	switch runtime.GOOS {
-	case "darwin":
-		_ = launchctl("bootout", domain()+"/"+Label)
-		return removeIfThere(plistPath())
-	case "linux":
-		_ = systemctl("disable", "--now", "herdr-automations.service")
-		if err := removeIfThere(unitPath()); err != nil {
-			return err
-		}
-		return systemctl("daemon-reload")
-	case "windows":
-		return uninstallRunValue()
-	}
-	return fmt.Errorf("no service support on %s", runtime.GOOS)
-}
+func Uninstall() error { return uninstall() }
 
 // Installed reports whether the service file (on Windows, the Run value) exists.
-func Installed() bool {
-	if runtime.GOOS == "windows" {
-		return runValueExists()
-	}
-	path := unitPath()
-	if runtime.GOOS == "darwin" {
-		path = plistPath()
-	}
-	_, err := os.Stat(path)
-	return err == nil
-}
-
-func plistPath() string {
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, "Library", "LaunchAgents", Label+".plist")
-}
-
-func unitPath() string {
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".config", "systemd", "user", "herdr-automations.service")
-}
-
-func domain() string { return "gui/" + strconv.Itoa(os.Getuid()) }
+func Installed() bool { return installed() }
 
 // plist renders the launchd agent. --standby keeps it from exiting while the
 // TUI's startup hook holds the scheduler lock: KeepAlive would relaunch it
@@ -159,33 +96,4 @@ func sortedKeys(m map[string]string) []string {
 	}
 	sort.Strings(keys)
 	return keys
-}
-
-func writeFile(path, content string) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-	}
-	return os.WriteFile(path, []byte(content), 0o644)
-}
-
-func removeIfThere(path string) error {
-	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
-		return err
-	}
-	return nil
-}
-
-func launchctl(args ...string) error {
-	if out, err := exec.Command("launchctl", args...).CombinedOutput(); err != nil {
-		return fmt.Errorf("launchctl %s: %s", args[0], strings.TrimSpace(string(out)))
-	}
-	return nil
-}
-
-func systemctl(args ...string) error {
-	all := append([]string{"--user"}, args...)
-	if out, err := exec.Command("systemctl", all...).CombinedOutput(); err != nil {
-		return fmt.Errorf("systemctl %s: %s", args[0], strings.TrimSpace(string(out)))
-	}
-	return nil
 }
