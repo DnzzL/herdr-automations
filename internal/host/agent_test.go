@@ -2,6 +2,7 @@ package host
 
 import (
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -27,7 +28,7 @@ func TestStartTakesAnotherNameWhileAnUnreadRunHoldsIt(t *testing.T) {
 		return nil
 	}}
 	a := config.Automation{Name: "hourly-check", Workspace: config.WorkspaceWorktree}
-	if err := agentWorkWith(ops, a).start(Session{PaneID: "w2:p1"}); err != nil {
+	if err := agentWorkWith(ops, a).start(Session{PaneID: "w2:p1"}, ""); err != nil {
 		t.Fatalf("want the run to start under another name, got %v", err)
 	}
 	if len(names) != 2 || names[1] == names[0] {
@@ -45,7 +46,7 @@ func TestStartRetriesUntilThePaneHasAShell(t *testing.T) {
 		return nil
 	}}
 
-	if err := agentWorkWith(ops, config.Automation{}).start(Session{PaneID: "p"}); err != nil {
+	if err := agentWorkWith(ops, config.Automation{}).start(Session{PaneID: "p"}, ""); err != nil {
 		t.Fatalf("want the third attempt to stick, got %v", err)
 	}
 	if calls != 3 {
@@ -60,7 +61,7 @@ func TestStartGivesUpOnAPaneThatNeverComesUp(t *testing.T) {
 	w := agentWorkWith(ops, config.Automation{})
 	w.knobs.paneReady = 20 * time.Millisecond
 
-	err := w.start(Session{PaneID: "p"})
+	err := w.start(Session{PaneID: "p"}, "")
 	if !herdr.HasCode(err, herdr.CodePaneBusy) {
 		t.Fatalf("want the busy error reported, got %v", err)
 	}
@@ -73,7 +74,7 @@ func TestStartDoesNotRetryARealFailure(t *testing.T) {
 	want := errors.New(`agent start: unknown kind "clyde"`)
 	ops := &fakeOps{agentStart: func(string, string, string, []string) error { return want }}
 
-	err := agentWorkWith(ops, config.Automation{}).start(Session{PaneID: "p"})
+	err := agentWorkWith(ops, config.Automation{}).start(Session{PaneID: "p"}, "")
 	if !errors.Is(err, want) {
 		t.Fatalf("got %v, want it passed through", err)
 	}
@@ -101,7 +102,7 @@ func TestStartForwardsModelAndMCPConfigAheadOfAgentArgs(t *testing.T) {
 				MCPConfig: "/mcp config.json", AgentArgs: []string{"--verbose"},
 			}
 
-			if err := agentWorkWith(ops, a).start(Session{PaneID: "p"}); err != nil {
+			if err := agentWorkWith(ops, a).start(Session{PaneID: "p"}, a.Model); err != nil {
 				t.Fatal(err)
 			}
 			if len(got) != len(tt.want) {
@@ -358,5 +359,173 @@ func TestAwaitReportsWhatHerdrLastSaid(t *testing.T) {
 	err := w.await(Session{PaneID: "p"}, 2*time.Millisecond)
 	if !herdr.HasCode(err, "timeout") {
 		t.Fatalf("got %v, want herdr's last error kept", err)
+	}
+}
+
+// ── model fallback ─────────────────────────────────────────────────
+
+// A model that is gone or out of quota fails the start; the run tries the
+// next fallback_models entry in the same workspace, with only --model moved.
+func TestFallbackRetriesStartWithTheNextModel(t *testing.T) {
+	var models []string
+	ops := &fakeOps{
+		agentStart: func(_, _, _ string, args []string) error {
+			for i, a := range args {
+				if a == "--model" && i+1 < len(args) {
+					models = append(models, args[i+1])
+				}
+			}
+			if len(models) == 1 {
+				return errors.New("model not found")
+			}
+			return nil
+		},
+		agentSubmit: func(string, string) error { return nil },
+		agentWait:   func(string, time.Duration) error { return nil },
+	}
+	a := config.Automation{
+		Name: "nightly", Agent: "claude", Model: "opus",
+		FallbackModels: []string{"sonnet", "haiku"},
+	}
+	if err := agentWorkWith(ops, a).do(Session{PaneID: "p"}, time.Minute); err != nil {
+		t.Fatalf("want the fallback to carry the run, got %v", err)
+	}
+	if len(models) != 2 || models[0] != "opus" || models[1] != "sonnet" {
+		t.Fatalf("models tried %q, want [opus sonnet]", models)
+	}
+}
+
+// A prompt that fails is final: the agent is up and holds the pane, and a
+// prompt herdr calls stalled may still run. No second agent is started.
+func TestNoFallbackWhenThePromptFails(t *testing.T) {
+	starts := 0
+	ops := &fakeOps{
+		agentStart: func(_, _, _ string, _ []string) error { starts++; return nil },
+		agentSubmit: func(string, string) error {
+			return errors.New("provider returned 429: quota exhausted")
+		},
+	}
+	a := config.Automation{
+		Name: "nightly", Agent: "pi", Model: "a/a",
+		FallbackModels: []string{"b/b"},
+	}
+	err := agentWorkWith(ops, a).do(Session{PaneID: "p"}, time.Minute)
+	if err == nil || strings.Contains(err.Error(), "models tried") {
+		t.Fatalf("got %v, want the single prompt failure", err)
+	}
+	if starts != 1 {
+		t.Errorf("started %d agents, want 1: a failed prompt is not retried", starts)
+	}
+}
+
+// Every model refused: the error names each one and why, and still unwraps to
+// the first model's refusal.
+func TestFallbackExhaustedListsEveryAttempt(t *testing.T) {
+	first := errors.New("unknown model opus")
+	ops := &fakeOps{agentStart: func(_, _, _ string, args []string) error {
+		if args[1] == "opus" {
+			return first
+		}
+		return errors.New("unknown model " + args[1])
+	}}
+	a := config.Automation{
+		Name: "nightly", Agent: "claude", Model: "opus",
+		FallbackModels: []string{"sonnet", "haiku"},
+	}
+	err := agentWorkWith(ops, a).do(Session{PaneID: "p"}, time.Minute)
+	if err == nil || !strings.Contains(err.Error(), "3 models tried") {
+		t.Fatalf("got %v, want all three reported", err)
+	}
+	for _, want := range []string{`"opus": start claude agent: unknown model opus`, `"sonnet"`, `"haiku": start claude agent: unknown model haiku`} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q lacks %q", err, want)
+		}
+	}
+	if !errors.Is(err, first) {
+		t.Errorf("want the first refusal reachable through errors.Is")
+	}
+}
+
+// A pane that never became a shell will not take the next model either: the
+// run reports the busy pane instead of waiting it out once per model.
+func TestNoFallbackOnABusyPane(t *testing.T) {
+	ops := &fakeOps{agentStart: func(string, string, string, []string) error {
+		return apiErr("agent start", herdr.CodePaneBusy)
+	}}
+	a := config.Automation{
+		Name: "nightly", Agent: "claude", Model: "opus",
+		FallbackModels: []string{"sonnet"},
+	}
+	w := agentWorkWith(ops, a)
+	w.knobs.paneReady = 20 * time.Millisecond
+	err := w.do(Session{PaneID: "p"}, time.Minute)
+	if !herdr.HasCode(err, herdr.CodePaneBusy) || strings.Contains(err.Error(), "models tried") {
+		t.Fatalf("got %v, want the busy pane reported once", err)
+	}
+}
+
+// Once the agent has worked, a failure is not retried: the run may have side
+// effects a second attempt would repeat.
+func TestNoFallbackAfterTheAgentWorked(t *testing.T) {
+	starts := 0
+	ops := &fakeOps{
+		agentStart:  func(_, _, _ string, _ []string) error { starts++; return nil },
+		agentSubmit: func(string, string) error { return nil },
+		agentWait:   func(string, time.Duration) error { return errors.New("the agent exited before finishing") },
+	}
+	a := config.Automation{
+		Name: "nightly", Agent: "claude", Model: "opus",
+		FallbackModels: []string{"sonnet"},
+	}
+	// await keeps polling until the deadline, so give it a short one.
+	err := agentWorkWith(ops, a).do(Session{PaneID: "p"}, 20*time.Millisecond)
+	if err == nil || strings.Contains(err.Error(), "models tried") {
+		t.Fatalf("got %v, want the single await failure, no fallback", err)
+	}
+	if starts != 1 {
+		t.Errorf("started %d agents, want 1: a late failure is not retried", starts)
+	}
+}
+
+// An empty primary model means "the agent's own default": the first attempt
+// carries no --model flag, the fallback does.
+func TestFallbackAfterAnEmptyPrimaryModel(t *testing.T) {
+	var withModelFlag []bool
+	ops := &fakeOps{
+		agentStart: func(_, _, _ string, args []string) error {
+			has := false
+			for _, a := range args {
+				if a == "--model" {
+					has = true
+				}
+			}
+			withModelFlag = append(withModelFlag, has)
+			if len(withModelFlag) == 1 {
+				return errors.New("default model unavailable")
+			}
+			return nil
+		},
+		agentSubmit: func(string, string) error { return nil },
+		agentWait:   func(string, time.Duration) error { return nil },
+	}
+	a := config.Automation{Name: "nightly", Agent: "claude", FallbackModels: []string{"sonnet"}}
+	if err := agentWorkWith(ops, a).do(Session{PaneID: "p"}, time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	if len(withModelFlag) != 2 || withModelFlag[0] || !withModelFlag[1] {
+		t.Fatalf("--model present %v, want [false true]", withModelFlag)
+	}
+}
+
+// No fallback configured: the error passes through unchanged, with no
+// "all models failed" wrapper.
+func TestSingleModelFailureIsNotRewrapped(t *testing.T) {
+	ops := &fakeOps{agentStart: func(_, _, _ string, _ []string) error {
+		return errors.New("boom")
+	}}
+	a := config.Automation{Name: "nightly", Agent: "claude", Model: "opus"}
+	err := agentWorkWith(ops, a).do(Session{PaneID: "p"}, time.Minute)
+	if err == nil || strings.Contains(err.Error(), "models tried") {
+		t.Fatalf("got %v, want the plain start error", err)
 	}
 }

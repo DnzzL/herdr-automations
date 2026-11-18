@@ -12,6 +12,10 @@ automations:
     # Passed to the agent as --model. Leave it out and the agent picks for
     # itself — which is how an unattended chore lands on a flagship model.
     model: sonnet
+    # If the agent refuses sonnet at 09:00 and fails to start, the run tries
+    # these in order before failing. Only a failed start is retried: once the
+    # agent is up — even if it then hits a quota error — the run is final.
+    fallback_models: [haiku]
     prompt: |
       Triage new GitHub issues: label them, close duplicates,
       draft replies for the ones needing more info.

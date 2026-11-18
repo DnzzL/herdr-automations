@@ -1,8 +1,11 @@
 package host
 
 import (
+	"errors"
 	"fmt"
 	"log"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/DnzzL/herdr-automations/internal/config"
@@ -19,9 +22,67 @@ type agentWork struct {
 	a     config.Automation
 }
 
+// startError marks an agent that failed to start: the one failure worth
+// retrying with another model. Once an agent started it holds the pane, and
+// a prompt herdr calls stalled may still run, so later failures are final.
+type startError struct{ err error }
+
+func (e startError) Error() string { return e.err.Error() }
+func (e startError) Unwrap() error { return e.err }
+
+// do tries the automation's model, then each fallback_models entry, while the
+// agent fails to start. The workspace, pane and prompt are unchanged between
+// attempts; only the --model flag moves.
 func (w agentWork) do(s Session, timeout time.Duration) error {
-	if err := w.start(s); err != nil {
-		return fmt.Errorf("start %s agent: %w", w.a.Agent, err)
+	models := append([]string{w.a.Model}, w.a.FallbackModels...)
+	var errs []error
+	for i, model := range models {
+		if i > 0 {
+			log.Printf("%s: retrying with fallback model %q after: %v", w.a.Name, model, errs[i-1])
+		}
+		err := w.doWithModel(s, model, timeout)
+		if err == nil {
+			if i > 0 {
+				log.Printf("%s: ran on fallback model %q", w.a.Name, model)
+			}
+			return nil
+		}
+		var start startError
+		if !errors.As(err, &start) {
+			errs = append(errs, err)
+			break
+		}
+		errs = append(errs, start.err)
+	}
+	if len(errs) == 1 {
+		return errs[0]
+	}
+	// Every attempt's cause, not just the last: the first model's refusal is
+	// usually the one worth reading.
+	parts := make([]string, len(errs))
+	args := make([]any, 0, 2*len(errs))
+	for i, err := range errs {
+		parts[i] = "%s: %w"
+		args = append(args, modelLabel(models[i]), err)
+	}
+	return fmt.Errorf(fmt.Sprintf("%d models tried; ", len(errs))+strings.Join(parts, "; "), args...)
+}
+
+func modelLabel(model string) string {
+	if model == "" {
+		return "agent default"
+	}
+	return strconv.Quote(model)
+}
+
+func (w agentWork) doWithModel(s Session, model string, timeout time.Duration) error {
+	if err := w.start(s, model); err != nil {
+		err = fmt.Errorf("start %s agent: %w", w.a.Agent, err)
+		// A pane that never became a shell will not take the next model either.
+		if w.ops.HasCode(err, herdr.CodePaneBusy) {
+			return err
+		}
+		return startError{err}
 	}
 	if err := w.submit(s); err != nil {
 		return err
@@ -32,15 +93,15 @@ func (w agentWork) do(s Session, timeout time.Duration) error {
 	return nil
 }
 
-// args assembles what gets forwarded to the agent executable. Model and MCP
-// config are sugar over agent_args, and go in front so an explicit agent_args
-// entry can still override them.
-func (w agentWork) args() []string { return agentArgs(w.a) }
+// args assembles what gets forwarded to the agent executable for one attempt.
+// Model and MCP config are sugar over agent_args, and go in front so an
+// explicit agent_args entry can still override them.
+func (w agentWork) args(model string) []string { return agentArgs(w.a, model) }
 
-func agentArgs(a config.Automation) []string {
+func agentArgs(a config.Automation, model string) []string {
 	args := a.AgentArgs
-	if a.Model != "" {
-		args = append([]string{"--model", a.Model}, args...)
+	if model != "" {
+		args = append([]string{"--model", model}, args...)
 	}
 	if a.MCPConfig != "" {
 		flag, path := "--mcp-config", a.MCPConfig
@@ -55,11 +116,11 @@ func agentArgs(a config.Automation) []string {
 // start launches the agent, retrying while herdr says the pane is not a shell
 // yet. Any other error is final — a bad agent kind or a missing binary will
 // not fix itself, and retrying only delays the report.
-func (w agentWork) start(s Session) error {
+func (w agentWork) start(s Session, model string) error {
 	name := agentNameFor(w.a, s.PaneID)
 	deadline := time.Now().Add(w.knobs.paneReady)
 	for {
-		err := w.ops.AgentStart(name, w.a.Agent, s.PaneID, w.args())
+		err := w.ops.AgentStart(name, w.a.Agent, s.PaneID, w.args(model))
 		// An unread previous run still holds the name: take the pane-marked
 		// one existing mode uses, rather than fail every run until it is read.
 		if paneName := paneAgentName(w.a, s.PaneID); w.ops.HasCode(err, herdr.CodeNameTaken) && name != paneName {

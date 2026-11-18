@@ -256,6 +256,8 @@ automations:
     session: automations          # optional Herdr session the run happens in
     agent: claude                 # any `herdr agent start --kind`
     model: sonnet                 # optional → --model; kinds without the flag are caught on load
+    fallback_models: [haiku]      # optional: if the agent fails to start on model, try these in order
+                                  # (backend: herdr only; once the agent is up, a failure is final)
     template: reviewer            # hc only, instead of agent + model: an hc template, prompt as its task
     prompt: "…"                   # OR workflow: <name>  (delegates to hwf run)
     mcp_config: ~/.config/mcp/github.json   # optional MCP servers JSON file; see below

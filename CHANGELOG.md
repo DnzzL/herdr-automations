@@ -2,6 +2,17 @@
 
 What changed for someone using the plugin. Dates are release dates.
 
+## Unreleased
+
+- `fallback_models: [m2, m3]` names models to try, in order, when the agent
+  fails to start on `model` — an unknown or retired model, or one the agent
+  exits on. The next try reuses the workspace, pane and prompt. A failure once
+  the agent is up is final, including a quota error the agent reports after it
+  took the prompt: its run may already have done something. `backend: herdr`
+  only; refused at load with `template`, `workflow`, an empty or repeated
+  entry, or an agent that takes no `--model`. A run's error lists every model
+  tried and why each failed.
+
 ## v0.12.1 — 2026-11-04
 
 - Copilot receives `mcp_config` through `--additional-mcp-config @<path>`,

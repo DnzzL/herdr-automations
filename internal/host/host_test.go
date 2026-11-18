@@ -327,7 +327,7 @@ func TestExistingRunsHaveDistinctLiveAgentNames(t *testing.T) {
 	// Herdr's pane IDs are case-sensitive; agent names are lowercase only. w1D
 	// and w1d are two different live tabs and must not fold onto one name.
 	for _, pane := range []string{"w7:p1", "w7:p2", "w1D:p1", "w1d:p1", "w17:pB", "w17:pb"} {
-		if err := w.start(Session{PaneID: pane}); err != nil {
+		if err := w.start(Session{PaneID: pane}, ""); err != nil {
 			t.Fatal(err)
 		}
 	}

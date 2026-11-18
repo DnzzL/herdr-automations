@@ -392,8 +392,9 @@ func TestTemplateNeedsTheHCBackendAndNoAgent(t *testing.T) {
 		{"hc", "", ""},
 		{"auto", "", "template requires backend: hc"},
 		{"herdr", "", "template requires backend: hc"},
-		{"hc", "\n    agent: codex", "template replaces agent and model"},
-		{"hc", "\n    model: opus", "template replaces agent and model"},
+		{"hc", "\n    agent: codex", "template replaces agent, model and fallback_models"},
+		{"hc", "\n    model: opus", "template replaces agent, model and fallback_models"},
+		{"hc", "\n    fallback_models: [sonnet]", "template replaces agent, model and fallback_models"},
 	}
 	for _, c := range cases {
 		withConfig(t, "backend: "+c.backend+"\nautomations:"+entry(c.extra)+"\n")
@@ -476,5 +477,101 @@ func TestSessionIsRefusedUnderHC(t *testing.T) {
 	}
 	if len(cfg.Invalid) != 1 || !strings.Contains(cfg.Invalid[0].Message, "session") {
 		t.Fatalf("got %+v", cfg.Invalid)
+	}
+}
+
+// fallback_models retries agent starts, which only the herdr backend drives.
+func TestFallbackModelsRefusedUnderHC(t *testing.T) {
+	withConfig(t, `backend: hc
+automations:
+  - name: f
+    cron: "@daily"
+    repo: /x
+    prompt: p
+    agent: pi
+    fallback_models: [other/model]
+`)
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.Invalid) != 1 || !strings.Contains(cfg.Invalid[0].Message, "needs backend: herdr") {
+		t.Fatalf("want the hc refusal, got %+v", cfg.Invalid)
+	}
+}
+
+// Each bad shape is caught at load: auto may pick hc per run and drop the
+// fallbacks, a workflow starts its own agents, and an empty or repeated entry
+// is a retry that cannot help.
+func TestFallbackModelsRefusals(t *testing.T) {
+	cases := []struct{ backend, extra, want string }{
+		{"auto", "\n    prompt: p\n    fallback_models: [b/b]", "needs backend: herdr"},
+		{"herdr", "\n    workflow: w\n    fallback_models: [b/b]", "fallback_models needs a prompt"},
+		{"herdr", "\n    prompt: p\n    fallback_models: [\"\"]", "empty entry"},
+		{"herdr", "\n    prompt: p\n    model: a/a\n    fallback_models: [a/a]", `repeats "a/a"`},
+		{"herdr", "\n    prompt: p\n    fallback_models: [b/b, b/b]", `repeats "b/b"`},
+		{"herdr", "\n    prompt: p\n    model: a/a\n    fallback_models: [b/b]", ""},
+	}
+	for _, c := range cases {
+		withConfig(t, "backend: "+c.backend+`
+automations:
+  - name: f
+    cron: "@daily"
+    repo: /x
+    agent: pi`+c.extra+"\n")
+		cfg, err := Load()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if c.want == "" {
+			if len(cfg.Invalid) != 0 {
+				t.Errorf("%s%s: want it to load, got %+v", c.backend, c.extra, cfg.Invalid)
+			}
+			continue
+		}
+		if len(cfg.Invalid) != 1 || !strings.Contains(cfg.Invalid[0].Message, c.want) {
+			t.Errorf("%s%s: want %q, got %+v", c.backend, c.extra, c.want, cfg.Invalid)
+		}
+	}
+}
+
+// A fallback model is still handed over as --model: a kind that takes no such
+// flag must be caught here, not at 3am.
+func TestFallbackModelsNeedAKindThatTakesModel(t *testing.T) {
+	withConfig(t, `automations:
+  - name: f
+    cron: "@daily"
+    repo: /x
+    prompt: p
+    agent: antigravity
+    fallback_models: [some/model]
+`)
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.Invalid) != 1 || !strings.Contains(cfg.Invalid[0].Message, "takes no --model") {
+		t.Fatalf("want the --model refusal, got %+v", cfg.Invalid)
+	}
+}
+
+// fallback_models without a primary model is fine: the first attempt runs on
+// the agent's own default.
+func TestFallbackModelsWithoutAPrimaryLoad(t *testing.T) {
+	withConfig(t, `automations:
+  - name: f
+    cron: "@daily"
+    repo: /x
+    prompt: p
+    agent: pi
+    fallback_models: [some/model, other/model]
+`)
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.Invalid) != 0 || len(cfg.Automations) != 1 ||
+		len(cfg.Automations[0].FallbackModels) != 2 {
+		t.Fatalf("want it to load with 2 fallbacks, got %+v / %+v", cfg.Invalid, cfg.Automations)
 	}
 }

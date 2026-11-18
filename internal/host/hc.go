@@ -179,7 +179,7 @@ func hcArgv(a config.Automation) ([]string, error) {
 	if !config.KindTakesPromptArg(a.Agent) {
 		return nil, fmt.Errorf("agent %q cannot take its prompt under backend: hc yet", a.Agent)
 	}
-	argv := append([]string{a.Agent}, agentArgs(a)...)
+	argv := append([]string{a.Agent}, agentArgs(a, a.Model)...)
 	return append(argv, config.PromptArgs(a.Agent, a.Prompt)...), nil
 }
 

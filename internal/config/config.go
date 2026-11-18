@@ -78,6 +78,13 @@ type Automation struct {
 	// The value is passed through untouched: model names move faster than any
 	// list we could keep here, so a typo surfaces when the agent refuses it.
 	Model string `yaml:"model,omitempty"`
+	// FallbackModels are tried in order when the agent fails to start — the
+	// agent refused the model, or exited on it — and the next entry gets the
+	// same workspace and prompt. A failure once the agent is up is never
+	// retried: the agent holds the pane, and its run may have side effects a
+	// retry would repeat. An agent that accepts the prompt and then hits a
+	// quota error is such a failure. Herdr TUI backend only.
+	FallbackModels []string `yaml:"fallback_models,omitempty"`
 	// Prompt submitted to the agent. Mutually exclusive with Workflow.
 	Prompt string `yaml:"prompt,omitempty"`
 	// Workflow delegates execution to herdr-workflows: `hwf run <name>`.
@@ -215,8 +222,39 @@ func (a *Automation) validate(backend Backend) error {
 	if a.Workflow != "" && backend == BackendHC {
 		return fmt.Errorf("%s: workflow drives the Herdr TUI; it cannot run under backend: hc", a.Name)
 	}
-	if a.Model != "" && !KindAcceptsModel(a.Agent) {
+	if err := a.validateFallbacks(backend); err != nil {
+		return err
+	}
+	if (a.Model != "" || len(a.FallbackModels) > 0) && !KindAcceptsModel(a.Agent) {
 		return fmt.Errorf("%s: agent %q takes no --model; put the flag it does take in agent_args", a.Name, a.Agent)
+	}
+	return nil
+}
+
+// validateFallbacks checks fallback_models. Under auto the backend is picked
+// per run, and an hc run would drop the fallbacks without a word.
+func (a *Automation) validateFallbacks(backend Backend) error {
+	if len(a.FallbackModels) == 0 {
+		return nil
+	}
+	if backend != BackendHerdr {
+		return fmt.Errorf("%s: fallback_models retries agent starts in the Herdr TUI; it needs backend: herdr", a.Name)
+	}
+	if a.Workflow != "" {
+		return fmt.Errorf("%s: fallback_models needs a prompt; a workflow starts its own agents", a.Name)
+	}
+	seen := map[string]bool{}
+	if a.Model != "" {
+		seen[a.Model] = true
+	}
+	for _, m := range a.FallbackModels {
+		if strings.TrimSpace(m) == "" {
+			return fmt.Errorf("%s: fallback_models has an empty entry", a.Name)
+		}
+		if seen[m] {
+			return fmt.Errorf("%s: fallback_models repeats %q; a second try on it fails the same way", a.Name, m)
+		}
+		seen[m] = true
 	}
 	return nil
 }
@@ -333,10 +371,10 @@ func parse(raw []byte) (*Config, error) {
 		}
 		a.Line = node.Line
 		// Checked before the defaults fill Agent in: a template brings its own.
-		if a.Template != "" && (a.Agent != "" || a.Model != "") {
+		if a.Template != "" && (a.Agent != "" || a.Model != "" || len(a.FallbackModels) > 0) {
 			cfg.Invalid = append(cfg.Invalid, Diagnostic{
 				Name: a.Name, Line: a.Line,
-				Message: fmt.Sprintf("%s: template replaces agent and model; drop them", a.Name),
+				Message: fmt.Sprintf("%s: template replaces agent, model and fallback_models; drop them", a.Name),
 			})
 			continue
 		}

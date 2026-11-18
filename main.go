@@ -391,7 +391,7 @@ func putCmd(args []string) error {
 	}
 	a := config.Automation{
 		Name: in.Name, Cron: in.Cron, Repo: in.Repo, Workspace: in.Workspace, WorkspaceID: in.WorkspaceID,
-		Agent: in.Agent, Model: in.Model, Template: in.Template, Prompt: in.Prompt, Workflow: in.Workflow,
+		Agent: in.Agent, Model: in.Model, FallbackModels: in.FallbackModels, Template: in.Template, Prompt: in.Prompt, Workflow: in.Workflow,
 		MCPConfig: in.MCPConfig, AgentArgs: in.AgentArgs, TimeoutMinutes: in.TimeoutMinutes,
 		CatchUpMinutes: in.CatchUpMinutes, Disabled: in.Disabled,
 	}
