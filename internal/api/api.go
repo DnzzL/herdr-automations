@@ -26,24 +26,25 @@ type Listing struct {
 
 // Automation is one entry as the form edits it, plus what the list shows.
 type Automation struct {
-	Name           string           `json:"name"`
-	Cron           string           `json:"cron"`
-	Repo           string           `json:"repo"`
-	Workspace      config.Workspace `json:"workspace"`
-	WorkspaceID    string           `json:"workspace_id,omitempty"`
-	Agent          string           `json:"agent,omitempty"`
-	Model          string           `json:"model,omitempty"`
-	Template       string           `json:"template,omitempty"`
-	Prompt         string           `json:"prompt,omitempty"`
-	Workflow       string           `json:"workflow,omitempty"`
-	MCPConfig      string           `json:"mcp_config,omitempty"`
-	AgentArgs      []string         `json:"agent_args,omitempty"`
-	TimeoutMinutes int              `json:"timeout_minutes"`
-	CatchUpMinutes int              `json:"catch_up_minutes"`
-	Disabled       bool             `json:"disabled"`
-	Line           int              `json:"line"`
-	Next           time.Time        `json:"next"`
-	Last           *Run             `json:"last"`
+	Name           string                `json:"name"`
+	Cron           string                `json:"cron"`
+	Repo           string                `json:"repo"`
+	Workspace      config.Workspace      `json:"workspace"`
+	WorkspaceID    string                `json:"workspace_id,omitempty"`
+	Agent          string                `json:"agent,omitempty"`
+	Model          string                `json:"model,omitempty"`
+	Template       string                `json:"template,omitempty"`
+	Prompt         string                `json:"prompt,omitempty"`
+	Workflow       string                `json:"workflow,omitempty"`
+	MCPConfig      string                `json:"mcp_config,omitempty"`
+	AgentArgs      []string              `json:"agent_args,omitempty"`
+	CloseWorkspace config.CloseWorkspace `json:"close_workspace,omitempty"`
+	TimeoutMinutes int                   `json:"timeout_minutes"`
+	CatchUpMinutes int                   `json:"catch_up_minutes"`
+	Disabled       bool                  `json:"disabled"`
+	Line           int                   `json:"line"`
+	Next           time.Time             `json:"next"`
+	Last           *Run                  `json:"last"`
 }
 
 // Invalid is an entry that did not load, and where to fix it.
@@ -84,7 +85,7 @@ func List() (Listing, error) {
 		entry := Automation{
 			Name: a.Name, Cron: a.Cron, Repo: a.Repo, Workspace: a.Workspace, WorkspaceID: a.WorkspaceID,
 			Agent: a.Agent, Model: a.Model, Template: a.Template, Prompt: a.Prompt, Workflow: a.Workflow,
-			MCPConfig: a.MCPConfig, AgentArgs: a.AgentArgs, TimeoutMinutes: a.TimeoutMinutes,
+			MCPConfig: a.MCPConfig, AgentArgs: a.AgentArgs, CloseWorkspace: a.CloseWorkspace, TimeoutMinutes: a.TimeoutMinutes,
 			CatchUpMinutes: a.CatchUpMinutes, Disabled: a.Disabled, Line: a.Line,
 		}
 		if a.Template != "" {
