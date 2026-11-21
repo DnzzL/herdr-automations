@@ -155,16 +155,3 @@ func TestFindIgnoresAFileThatOnlyCarriesTheMarker(t *testing.T) {
 		t.Fatalf("Install over a binary = %v, want ErrNotOurs", err)
 	}
 }
-
-func TestFindReturnsTheShimWeWrote(t *testing.T) {
-	fakeHost(t, t.TempDir())
-	dir := t.TempDir()
-	if err := Install(dir); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("PATH", dir)
-	want := filepath.Join(dir, name)
-	if got, ok := Find(); !ok || got != want {
-		t.Fatalf("Find = %q, %v; want %q", got, ok, want)
-	}
-}

@@ -8,6 +8,8 @@ What changed for someone using the plugin. Dates are release dates.
 
 - `service install` no longer mistakes a `herdr-automations` binary on PATH
   for the CLI shim, so it registers the exe you ran (#21).
+- `install-cli` refuses to overwrite a `herdr-automations` binary in its target
+  directory instead of replacing it with the shim.
 
 ## v0.12.1 — 2026-11-04
 
