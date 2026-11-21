@@ -9,11 +9,11 @@ import (
 )
 
 // LookPath resolves herdr-automations through PATHEXT, so the exe that the
-// installer drops on PATH is what it finds. That is not our shim: the service
+// installer drops on PATH, marker included, is what it finds. That is not our shim: the service
 // must register the exe you ran, not point at it by PATH.
 func TestFindIgnoresAnExeOnPath(t *testing.T) {
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, name+".exe"), []byte("MZ\x90\x00"), 0o755); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, name+".exe"), append([]byte("MZ\x90\x00"), marker...), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", dir)

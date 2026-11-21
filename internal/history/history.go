@@ -62,7 +62,7 @@ func NewID(automation, kind string) string {
 	if kind != "" {
 		automation += "-" + kind
 	}
-	// Windows' clock ticks about every 0.5 ms: two IDs in one tick would be
+	// Windows' clock ticks every 0.5 to 15.6 ms: two IDs in one tick would be
 	// equal, so each one is at least a nanosecond past the last.
 	idMu.Lock()
 	defer idMu.Unlock()
