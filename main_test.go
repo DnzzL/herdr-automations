@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -93,6 +94,41 @@ func TestPutEntryAnswersLikeStdin(t *testing.T) {
 			}
 		})
 	}
+}
+
+// close_workspace goes through put and comes back from ls --json; a form that
+// does not send it leaves the saved value alone; an entry that would close a
+// shared workspace is refused.
+func TestPutCarriesCloseWorkspace(t *testing.T) {
+	const closing = `automations:
+  - name: triage
+    cron: "0 9 * * 1-5"
+    repo: /x
+    prompt: p
+    close_workspace: on-success
+`
+	t.Run("put then ls", func(t *testing.T) {
+		res := cli(t, putConfig, `{"name":"triage","close_workspace":"on-success"}`, "put", "--original", "triage")
+		if !strings.Contains(res.file, "close_workspace: on-success") {
+			t.Fatalf("not written:\n%s", res.file)
+		}
+		got := cli(t, res.file, "", "ls", "--json")
+		if !strings.Contains(got.stdout, `"close_workspace": "on-success"`) && !strings.Contains(got.stdout, `"close_workspace":"on-success"`) {
+			t.Fatalf("ls --json omits it: %s", got.stdout)
+		}
+	})
+	t.Run("omitted key is kept", func(t *testing.T) {
+		res := cli(t, closing, `{"name":"triage","prompt":"new"}`, "put", "--original", "triage")
+		if !strings.Contains(res.file, "close_workspace: on-success") {
+			t.Fatalf("dropped:\n%s", res.file)
+		}
+	})
+	t.Run("refused with existing", func(t *testing.T) {
+		res := cli(t, putConfig, `{"name":"triage","workspace":"existing","workspace_id":"w1","close_workspace":"on-success"}`, "put", "--original", "triage")
+		if !strings.Contains(res.stdout, "close_workspace") || res.file != putConfig {
+			t.Fatalf("not refused: %+v", res)
+		}
+	})
 }
 
 // The panel cannot wait on a Run for an hour, and closing the app must not end

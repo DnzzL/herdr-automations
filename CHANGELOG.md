@@ -2,6 +2,13 @@
 
 What changed for someone using the plugin. Dates are release dates.
 
+## Unreleased
+
+### Added
+
+- The desktop panel's form has a "Close workspace" switch for `close_workspace`,
+  and `list --json` / `put` carry it, so saving in the panel keeps the value (#27).
+
 ## v0.13.0 — 2026-11-21
 
 ### Added

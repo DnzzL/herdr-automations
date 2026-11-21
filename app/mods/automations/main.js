@@ -145,6 +145,7 @@ export default class Automations extends View {
     };
     this.form = {
       original, workspace: a.workspace ?? "worktree", workspace_id: a.workspace_id ?? "",
+      close: a.close_workspace === "on-success" && a.workspace !== "existing",
       agent: a.template ? "" : a.agent ?? "claude", template: a.template ?? "",
       name: field(a.name, "issue-triage"), cron: field(a.cron, "0 9 * * 1-5"), repo: field(tilde(a.repo), "~/Projects/myapp"),
       model: field(a.model, "agent default"), timeout: field(String(a.timeout_minutes ?? 60), "60"),
@@ -169,6 +170,7 @@ export default class Automations extends View {
     return {
       name: f.name.value().trim(), cron: f.cron.value().trim(), repo: expand(f.repo.value().trim()),
       workspace: f.workspace, workspace_id: f.workspace === "existing" ? f.workspace_id : "",
+      close_workspace: f.close && f.workspace !== "existing" ? "on-success" : "never",
       agent: f.template ? "" : f.agent, template: f.template, model: f.template ? "" : f.model.value().trim(),
       prompt: f.prompt.value(), mcp_config: expand(f.mcp.value().trim()), timeout_minutes: Number.isFinite(num) ? num : 0,
     };
@@ -337,6 +339,7 @@ export default class Automations extends View {
         .child(kv("Next", a.disabled ? "paused" : this.list.paused ? "held: all paused" : until(a.next)))
         .child(kv("Repo", tilde(a.repo)))
         .child(kv("Runs in", WORKSPACES.find(([w]) => w === a.workspace)?.[1] ?? a.workspace))
+        .child(kv("Closes", a.close_workspace === "on-success" ? "after a successful run" : "stays open"))
         .child(kv(a.template ? "Template" : "Agent", a.template || `${a.agent}${a.model ? " · " + a.model : ""}`)))
       .child(div().p(8).rounded(7).bg(t.raised).text_size(12).text_color(t.muted).child(a.prompt || a.workflow || ""))
       .child(div().pt(4).text_size(11).font_semibold().text_color(t.dim).child("HISTORY"))
@@ -372,10 +375,13 @@ export default class Automations extends View {
           if (dir) { f.repo.set_value(tilde(dir)); this.preview(cx); }
           cx.notify();
         }), { h: 30 })))
-      .child(label("RUNS IN")).child(this.pills("f-ws", WORKSPACES, f.workspace, t, (v, cx) => { f.workspace = v; this.preview(cx); cx.notify(); }))
+      .child(label("RUNS IN")).child(this.pills("f-ws", WORKSPACES, f.workspace, t, (v, cx) => { f.workspace = v; if (v === "existing") f.close = false; this.preview(cx); cx.notify(); }))
       .when(f.workspace === "existing", (el) => el.child(this.pills("f-space",
         spaces().filter((s) => !s.machine).map((s) => [s.id, s.name]), f.workspace_id, t,
         (v, cx) => { f.workspace_id = v; this.preview(cx); cx.notify(); })))
+      .child(label("CLOSE WORKSPACE")).child(h_flex().gap(8).items_center().when(f.workspace === "existing", (el) => el.opacity(0.5))
+        .child(this.switch_("f-close", f.close, t, (cx) => { if (f.workspace === "existing") return; f.close = !f.close; this.preview(cx); cx.notify(); }))
+        .child(div().text_size(12).text_color(t.muted).child(f.workspace === "existing" ? "Not with a shared space" : "Close after a successful run")))
       .child(label("AGENT")).child(this.pills("f-agent", agents, agentValue, t, (v, cx) => {
         if (v.startsWith("template:")) { f.template = v.slice(9); f.agent = ""; } else { f.template = ""; f.agent = v; }
         this.preview(cx); cx.notify();

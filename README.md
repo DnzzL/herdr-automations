@@ -415,6 +415,8 @@ closes the workspace once the run is recorded `done` (not with `workspace: exist
 Failed, cancelled and timed-out runs stay open, and so does a run whose agent waits on
 you. The worktree stays on disk for `cleanup`
 ([ADR 0012](docs/adr/0012-a-successful-run-may-close-its-workspace.md)).
+In the desktop panel it is the "Close workspace" switch in the form (off with
+`workspace: existing`).
 
 `herdr-automations cleanup` removes only the ones whose work already landed — the
 branch is an ancestor of the default branch, so either it was merged or the agent
