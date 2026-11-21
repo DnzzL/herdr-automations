@@ -2,8 +2,12 @@
 
 What changed for someone using the plugin. Dates are release dates.
 
-## v0.13.0 — unreleased
+## Unreleased
 
+### Added
+
+- `gate:` runs a command in the repo before a run starts. Exit 75 skips the run
+  (recorded `skipped`, no workspace, no toast); any other failure fails it (#24).
 - Windows support, as the desktop app's backend: one PowerShell command
   installs or updates it, `service install` starts the scheduler at login, and
   the panel works as on macOS and Linux. Runs always go through hc there; a

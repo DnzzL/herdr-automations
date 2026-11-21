@@ -172,3 +172,21 @@ func TestEditsKeepTheFilesIndentation(t *testing.T) {
 		}
 	}
 }
+
+// The panel has no field for gate; opening and saving an entry must not drop it.
+func TestPutKeepsAGateTheFormDoesNotKnow(t *testing.T) {
+	withConfig(t, `automations:
+  - name: triage
+    cron: "0 9 * * 1-5"
+    repo: /x
+    prompt: p
+    gate: [gh, pr, list]
+`)
+	a := Automation{Name: "triage", Cron: "0 8 * * 1-5", Repo: "/x", Prompt: "p2"}
+	if res, err := Put("triage", a, []string{"name", "cron", "repo", "prompt"}, false); err != nil || res.Problem != "" {
+		t.Fatalf("put: %v %q", err, res.Problem)
+	}
+	if text := fileText(t); !strings.Contains(text, "gate:") || !strings.Contains(text, "pr") {
+		t.Errorf("file lost the gate:\n%s", text)
+	}
+}
