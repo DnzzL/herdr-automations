@@ -139,3 +139,32 @@ func TestFindReturnsOurShimOnPathAndNothingElse(t *testing.T) {
 		t.Fatalf("Find() = %q, %v", got, ok)
 	}
 }
+
+func TestFindIgnoresAFileThatOnlyCarriesTheMarker(t *testing.T) {
+	// The real binary embeds the marker string; it is not the shim.
+	dir := t.TempDir()
+	binary := append([]byte("\x7fELF\x00\x00"), marker...)
+	if err := os.WriteFile(filepath.Join(dir, name), binary, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir)
+	if got, ok := Find(); ok {
+		t.Fatalf("Find = %q, want none", got)
+	}
+	if err := Install(dir); !errors.Is(err, ErrNotOurs) {
+		t.Fatalf("Install over a binary = %v, want ErrNotOurs", err)
+	}
+}
+
+func TestFindReturnsTheShimWeWrote(t *testing.T) {
+	fakeHost(t, t.TempDir())
+	dir := t.TempDir()
+	if err := Install(dir); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir)
+	want := filepath.Join(dir, name)
+	if got, ok := Find(); !ok || got != want {
+		t.Fatalf("Find = %q, %v; want %q", got, ok, want)
+	}
+}
