@@ -4,6 +4,11 @@ What changed for someone using the plugin. Dates are release dates.
 
 ## Unreleased
 
+### Added
+
+- `gate:` runs a command in the repo before a run starts. Exit 75 skips the run
+  (recorded `skipped`, no workspace, no toast); any other failure fails it (#24).
+
 ### Fixed
 
 - `service install` no longer mistakes a `herdr-automations` binary on PATH

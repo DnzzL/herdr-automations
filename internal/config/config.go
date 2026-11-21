@@ -97,6 +97,9 @@ type Automation struct {
 	Session string `yaml:"session,omitempty"`
 	// CloseWorkspace closes a done run's workspace; failures stay open.
 	CloseWorkspace CloseWorkspace `yaml:"close_workspace,omitempty"`
+	// Gate is a command (argv, no shell) run in Repo before the run starts:
+	// exit 0 runs it, 75 skips it, anything else fails it (ADR 0014).
+	Gate []string `yaml:"gate,omitempty"`
 	// Disabled keeps the entry in the file but out of the scheduler.
 	Disabled bool `yaml:"disabled,omitempty"`
 
@@ -193,6 +196,9 @@ func (a *Automation) validate(backend Backend) error {
 	}
 	if a.CloseWorkspace != "" && a.CloseWorkspace != CloseNever && a.CloseWorkspace != CloseOnSuccess {
 		return fmt.Errorf("%s: close_workspace must be never or on-success, got %q", a.Name, a.CloseWorkspace)
+	}
+	if a.Gate != nil && (len(a.Gate) == 0 || strings.TrimSpace(a.Gate[0]) == "") {
+		return fmt.Errorf("%s: gate must be a non-empty argv list, e.g. [\"sh\", \"-c\", \"...\"]", a.Name)
 	}
 	// Closing a run's tab can close the workspace it shares with others.
 	if a.CloseWorkspace == CloseOnSuccess && a.Workspace == WorkspaceExisting {
