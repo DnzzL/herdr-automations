@@ -50,3 +50,9 @@ Running before provisioning is the point: a skipped run costs one process.
 - A manual `run` is gated too, so "Run now" can skip. The reason is in the
   history; bypassing for manual runs is a possible follow-up.
 - A gate hides nothing from `history`: skipped runs are recorded.
+- While the gate runs (up to 60 s) the run holds its in-flight slot but has no
+  history entry yet; a second trigger then records "previous run still in flight".
+- A manual `run` of a skipped automation returns an error saying so (like the
+  in-flight skip), so the board and CLI never report "finished".
+- On timeout only the gate's own process is killed; children it spawned (a
+  `sh -c` pipeline) may outlive it.

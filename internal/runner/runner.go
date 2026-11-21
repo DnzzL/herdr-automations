@@ -6,7 +6,6 @@
 package runner
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -74,7 +73,9 @@ func (r *Runner) Run(a config.Automation, trigger history.Trigger) error {
 		switch err := runGate(a); {
 		case errors.Is(err, errGateSkip):
 			r.record(id, a.Name, trigger, history.StatusSkipped, host.Session{}, "gate: nothing to do (exit 75)")
-			return nil
+			// An error, like the in-flight skip: a person who asked for the run
+			// must not be told it finished.
+			return fmt.Errorf("%s: gate: nothing to do, skipped: %w", a.Name, ErrGateSkipped)
 		case err != nil:
 			r.record(id, a.Name, trigger, history.StatusFailed, host.Session{}, err.Error())
 			return err
@@ -112,6 +113,10 @@ const gateSkipCode = 75
 // gateTimeout is fixed on purpose (ADR 0014); a var only so a test can shorten it.
 var gateTimeout = 60 * time.Second
 
+// ErrGateSkipped is what Run returns for a run its gate skipped, so a caller
+// can tell a skip from a failure.
+var ErrGateSkipped = errors.New("skipped by gate")
+
 var errGateSkip = errors.New("gate asked to skip")
 
 // runGate runs the automation's gate in its repo, before anything is
@@ -122,7 +127,7 @@ func runGate(a config.Automation) error {
 	defer cancel()
 	cmd := exec.CommandContext(ctx, a.Gate[0], a.Gate[1:]...)
 	cmd.Dir = a.Repo
-	var stderr bytes.Buffer
+	var stderr tailBuffer
 	cmd.Stderr = &stderr
 	// A killed `sh -c` can leave a grandchild holding the pipe open.
 	cmd.WaitDelay = 2 * time.Second
@@ -132,20 +137,32 @@ func runGate(a config.Automation) error {
 	case err == nil:
 		return nil
 	case ctx.Err() != nil:
-		return fmt.Errorf("gate timed out after %s%s", gateTimeout, tail(&stderr))
+		return fmt.Errorf("gate timed out after %s%s", gateTimeout, stderr.tail())
 	case errors.As(err, &exit) && exit.ExitCode() == gateSkipCode:
 		return errGateSkip
 	case errors.As(err, &exit):
-		return fmt.Errorf("gate exited %d%s", exit.ExitCode(), tail(&stderr))
+		return fmt.Errorf("gate exited %d%s", exit.ExitCode(), stderr.tail())
 	}
 	return fmt.Errorf("gate could not run: %w", err)
 }
 
+// tailBuffer keeps the last 8 KiB written to it: a noisy gate cannot fill
+// memory in its 60 s, and only the end is ever shown.
+type tailBuffer struct{ b []byte }
+
+func (t *tailBuffer) Write(p []byte) (int, error) {
+	t.b = append(t.b, p...)
+	if len(t.b) > 8<<10 {
+		t.b = t.b[len(t.b)-8<<10:]
+	}
+	return len(p), nil
+}
+
 // tail is the last lines of a gate's stderr as ": a | b | c", or nothing. One
 // line because a toast shows only the first line of its body.
-func tail(b *bytes.Buffer) string {
+func (b *tailBuffer) tail() string {
 	var lines []string
-	for _, l := range strings.Split(b.String(), "\n") {
+	for _, l := range strings.Split(string(b.b), "\n") {
 		if l = strings.TrimSpace(l); l != "" {
 			lines = append(lines, l)
 		}

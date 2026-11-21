@@ -449,8 +449,8 @@ func TestGateExiting75SkipsBeforeAnythingIsProvisioned(t *testing.T) {
 		provisioned = true
 		return host.Session{}, nil
 	}}
-	if err := NewWith(h, notify.With(sink)).Run(a, "cron"); err != nil {
-		t.Fatalf("a gate skip is not an error: %v", err)
+	if err := NewWith(h, notify.With(sink)).Run(a, "cron"); !errors.Is(err, ErrGateSkipped) {
+		t.Fatalf("a manual run must be told it was skipped: %v", err)
 	}
 	if provisioned {
 		t.Error("a skipped run provisioned a workspace")

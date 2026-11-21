@@ -277,7 +277,7 @@ Other agents still receive `--mcp-config <path>`.
 **Gate.** `gate:` is a command, as an argv list (no shell; write
 `["sh", "-c", "…"]` if you want one), run in `repo` before the run starts and before
 any workspace or worktree exists. Exit `0` runs the automation. Exit `75`
-(`EX_TEMPFAIL`) skips it: the history says `skipped: gate: nothing to do`, and nothing
+(`EX_TEMPFAIL`) skips it: the history says `skipped: gate: nothing to do (exit 75)`, and nothing
 is provisioned or toasted. Any other exit, a start failure, or more than 60 s
 (not configurable) fails the run, toasted with the end of the gate's stderr. The gate's
 output is not passed to the prompt. It applies to scheduled runs and to `run` alike
