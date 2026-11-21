@@ -98,3 +98,17 @@ func TestMarkAllSeenEmptiesTheInbox(t *testing.T) {
 		}
 	}
 }
+
+func TestNewIDIsUniqueOnACoarseClock(t *testing.T) {
+	frozen := time.Unix(1700000000, 0)
+	defer func(f func() time.Time) { now = f }(now)
+	now = func() time.Time { return frozen }
+	seen := map[string]bool{}
+	for i := 0; i < 100; i++ {
+		id := NewID("a", "")
+		if seen[id] {
+			t.Fatalf("duplicate id %q", id)
+		}
+		seen[id] = true
+	}
+}

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/DnzzL/herdr-automations/internal/config"
@@ -49,13 +50,28 @@ const (
 	TriggerManual Trigger = "manual"
 )
 
+var (
+	now    = time.Now
+	idMu   sync.Mutex
+	lastID int64
+)
+
 // NewID names a run in the log. Everything that appends here built the same
 // name-nanos shape by hand, three times, with three different infixes.
 func NewID(automation, kind string) string {
 	if kind != "" {
 		automation += "-" + kind
 	}
-	return fmt.Sprintf("%s-%d", automation, time.Now().UnixNano())
+	// Windows' clock ticks every 0.5 to 15.6 ms: two IDs in one tick would be
+	// equal, so each one is at least a nanosecond past the last.
+	idMu.Lock()
+	defer idMu.Unlock()
+	n := now().UnixNano()
+	if n <= lastID {
+		n = lastID + 1
+	}
+	lastID = n
+	return fmt.Sprintf("%s-%d", automation, n)
 }
 
 type Record struct {
