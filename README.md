@@ -195,7 +195,7 @@ refuses it unless it matches the release's `checksums.txt`, puts it in
 `%LOCALAPPDATA%\Programs\herdr-automations` (where the panel looks) and adds that
 folder to your user PATH. Run it again to update, scheduler running or not: the
 running exe is renamed aside, and the scheduler switches to the new one within a
-minute. `$env:HERDR_AUTOMATIONS_VERSION = "0.13.0"` first installs that release
+minute. `$env:HERDR_AUTOMATIONS_VERSION = "0.14.0"` first installs that release
 instead. x64 only.
 
 `backend: hc` is the only backend: no `backend:` line, or `auto`, means hc, and
