@@ -172,7 +172,7 @@ func evaluate(state *scheduleState, runs *runner.Runner, n *notify.Notifier) {
 					time.Since(d.At).Round(time.Minute))
 			}
 			go func(a config.Automation, trigger history.Trigger) {
-				if err := runs.Run(a, trigger); err != nil {
+				if err := runs.Run(a, trigger); err != nil && !errors.Is(err, runner.ErrGateSkipped) {
 					log.Printf("run %s: %v", a.Name, err)
 				}
 			}(d.Automation, d.Trigger)

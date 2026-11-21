@@ -6,9 +6,12 @@
 package runner
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log"
+	"os/exec"
+	"strings"
 	"sync"
 	"time"
 
@@ -55,7 +58,8 @@ func (r *Runner) Busy() bool {
 //
 // Overlapping runs of the same automation are skipped rather than queued: if
 // the 9:00 run is still working at 10:00, the 10:00 occurrence is dropped and
-// recorded as such.
+// recorded as such. A gate, when the automation has one, is the next thing
+// asked: it can skip the run before a workspace exists.
 func (r *Runner) Run(a config.Automation, trigger history.Trigger) error {
 	if _, busy := r.inFlight.LoadOrStore(a.Name, true); busy {
 		r.record(history.NewID(a.Name, ""), a.Name, trigger, history.StatusSkipped, host.Session{},
@@ -65,6 +69,18 @@ func (r *Runner) Run(a config.Automation, trigger history.Trigger) error {
 	defer r.inFlight.Delete(a.Name)
 
 	id := history.NewID(a.Name, "")
+	if len(a.Gate) > 0 {
+		switch err := runGate(a); {
+		case errors.Is(err, errGateSkip):
+			r.record(id, a.Name, trigger, history.StatusSkipped, host.Session{}, "gate: nothing to do (exit 75)")
+			// An error, like the in-flight skip: a person who asked for the run
+			// must not be told it finished.
+			return fmt.Errorf("%s: gate: nothing to do, skipped: %w", a.Name, ErrGateSkipped)
+		case err != nil:
+			r.record(id, a.Name, trigger, history.StatusFailed, host.Session{}, err.Error())
+			return err
+		}
+	}
 	r.record(id, a.Name, trigger, history.StatusScheduled, host.Session{}, "")
 
 	session, err := r.host.Provision(a)
@@ -88,6 +104,80 @@ func (r *Runner) Run(a config.Automation, trigger history.Trigger) error {
 		}
 	}
 	return nil
+}
+
+// gateSkipCode is EX_TEMPFAIL: the one exit status by which a gate says "not
+// now" rather than "broken".
+const gateSkipCode = 75
+
+// gateTimeout is fixed on purpose (ADR 0014); a var only so a test can shorten it.
+var gateTimeout = 60 * time.Second
+
+// ErrGateSkipped is what Run returns for a run its gate skipped, so a caller
+// can tell a skip from a failure.
+var ErrGateSkipped = errors.New("skipped by gate")
+
+var errGateSkip = errors.New("gate asked to skip")
+
+// runGate runs the automation's gate in its repo, before anything is
+// provisioned. nil lets the run go on, errGateSkip skips it, anything else is a
+// failure whose message ends with the tail of the gate's stderr.
+func runGate(a config.Automation) error {
+	ctx, cancel := context.WithTimeout(context.Background(), gateTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, a.Gate[0], a.Gate[1:]...)
+	cmd.Dir = a.Repo
+	var stderr tailBuffer
+	cmd.Stderr = &stderr
+	// A killed `sh -c` can leave a grandchild holding the pipe open.
+	cmd.WaitDelay = 2 * time.Second
+	err := cmd.Run()
+	var exit *exec.ExitError
+	switch {
+	case err == nil:
+		return nil
+	case ctx.Err() != nil:
+		return fmt.Errorf("gate timed out after %s%s", gateTimeout, stderr.tail())
+	case errors.As(err, &exit) && exit.ExitCode() == gateSkipCode:
+		return errGateSkip
+	case errors.As(err, &exit):
+		return fmt.Errorf("gate exited %d%s", exit.ExitCode(), stderr.tail())
+	}
+	return fmt.Errorf("gate could not run: %w", err)
+}
+
+// tailBuffer keeps the last 8 KiB written to it: a noisy gate cannot fill
+// memory in its 60 s, and only the end is ever shown.
+type tailBuffer struct{ b []byte }
+
+func (t *tailBuffer) Write(p []byte) (int, error) {
+	t.b = append(t.b, p...)
+	if len(t.b) > 8<<10 {
+		t.b = t.b[len(t.b)-8<<10:]
+	}
+	return len(p), nil
+}
+
+// tail is the last lines of a gate's stderr as ": a | b | c", or nothing. One
+// line because a toast shows only the first line of its body.
+func (b *tailBuffer) tail() string {
+	var lines []string
+	for _, l := range strings.Split(string(b.b), "\n") {
+		if l = strings.TrimSpace(l); l != "" {
+			lines = append(lines, l)
+		}
+	}
+	if len(lines) == 0 {
+		return ""
+	}
+	if len(lines) > 3 {
+		lines = lines[len(lines)-3:]
+	}
+	out := strings.Join(lines, " | ")
+	if r := []rune(out); len(r) > 300 {
+		out = "…" + string(r[len(r)-299:])
+	}
+	return ": " + out
 }
 
 // statusFor decides how a run that ended in err is remembered. Only a workspace

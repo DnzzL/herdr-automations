@@ -397,3 +397,124 @@ func TestRunStaysDoneWhenTheCloseFails(t *testing.T) {
 		t.Fatalf("status %q, want done", got[0].Status)
 	}
 }
+
+// TestGateHelper is the gate command: this test binary, asked to exit as told.
+// It is how a gate runs the same on every OS, with no sh.
+func TestGateHelper(t *testing.T) {
+	mode := os.Getenv("GATE_HELPER")
+	if mode == "" {
+		t.Skip("only a gate")
+	}
+	switch mode {
+	case "hang":
+		time.Sleep(time.Minute)
+	case "stderr":
+		fmt.Fprintln(os.Stderr, "first line")
+		fmt.Fprintln(os.Stderr, "gh: not logged in")
+		os.Exit(1)
+	default:
+		var code int
+		fmt.Sscan(mode, &code)
+		os.Exit(code)
+	}
+}
+
+// gated is an automation whose gate behaves as mode says, in a repo that exists.
+func gated(t *testing.T, mode string) config.Automation {
+	t.Helper()
+	t.Setenv("HERDR_PLUGIN_STATE_DIR", t.TempDir())
+	t.Setenv("GATE_HELPER", mode)
+	a := automation()
+	a.Repo = t.TempDir()
+	a.Gate = []string{os.Args[0], "-test.run=^TestGateHelper$"}
+	return a
+}
+
+func TestGateExitingZeroLetsTheRunGoOn(t *testing.T) {
+	a := gated(t, "0")
+	h := &fakeHost{}
+	if err := New(h).Run(a, "cron"); err != nil {
+		t.Fatal(err)
+	}
+	if got := runs(t); len(got) != 1 || got[0].Status != history.StatusDone {
+		t.Fatalf("runs = %+v", got)
+	}
+}
+
+func TestGateExiting75SkipsBeforeAnythingIsProvisioned(t *testing.T) {
+	a := gated(t, "75")
+	sink := &fakeSink{}
+	provisioned := false
+	h := &fakeHost{provision: func(config.Automation) (host.Session, error) {
+		provisioned = true
+		return host.Session{}, nil
+	}}
+	if err := NewWith(h, notify.With(sink)).Run(a, "cron"); !errors.Is(err, ErrGateSkipped) {
+		t.Fatalf("a manual run must be told it was skipped: %v", err)
+	}
+	if provisioned {
+		t.Error("a skipped run provisioned a workspace")
+	}
+	got := runs(t)
+	if len(got) != 1 || got[0].Status != history.StatusSkipped {
+		t.Fatalf("runs = %+v", got)
+	}
+	if !strings.Contains(got[0].Error, "gate") || got[0].Error == "previous run still in flight" {
+		t.Errorf("reason %q does not say it was the gate", got[0].Error)
+	}
+	if len(sink.titles) != 0 {
+		t.Errorf("a skip toasted: %v", sink.titles)
+	}
+}
+
+func TestGateFailingFailsTheRunWithStderrsTail(t *testing.T) {
+	a := gated(t, "stderr")
+	sink := &fakeSink{}
+	provisioned := false
+	h := &fakeHost{provision: func(config.Automation) (host.Session, error) {
+		provisioned = true
+		return host.Session{}, nil
+	}}
+	if err := NewWith(h, notify.With(sink)).Run(a, "cron"); err == nil {
+		t.Fatal("want the run to fail")
+	}
+	if provisioned {
+		t.Error("a failed gate provisioned a workspace")
+	}
+	got := runs(t)
+	if len(got) != 1 || got[0].Status != history.StatusFailed || !strings.Contains(got[0].Error, "gh: not logged in") {
+		t.Fatalf("runs = %+v", got)
+	}
+	if len(sink.titles) != 1 {
+		t.Errorf("a failed gate must toast once: %v", sink.titles)
+	}
+}
+
+func TestGateThatCannotStartFailsTheRun(t *testing.T) {
+	a := gated(t, "0")
+	a.Gate = []string{filepath.Join(a.Repo, "no-such-binary")}
+	if err := New(&fakeHost{}).Run(a, "cron"); err == nil {
+		t.Fatal("want the run to fail")
+	}
+	if got := runs(t); len(got) != 1 || got[0].Status != history.StatusFailed {
+		t.Fatalf("runs = %+v", got)
+	}
+}
+
+func TestGateThatHangsFailsAtItsTimeout(t *testing.T) {
+	a := gated(t, "hang")
+	old := gateTimeout
+	gateTimeout = 300 * time.Millisecond
+	defer func() { gateTimeout = old }()
+	start := time.Now()
+	if err := New(&fakeHost{}).Run(a, "cron"); err == nil {
+		t.Fatal("want the run to fail")
+	}
+	if time.Since(start) > 20*time.Second {
+		t.Error("the gate was not cut at its timeout")
+	}
+	got := runs(t)
+	if len(got) != 1 || got[0].Status != history.StatusFailed || !strings.Contains(got[0].Error, "timed out") {
+		t.Fatalf("runs = %+v", got)
+	}
+}
