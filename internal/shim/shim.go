@@ -42,6 +42,12 @@ fi
 exec "$root/bin/herdr-automations" "$@"
 `
 
+// isShim: a script of ours. The marker alone is not enough, the
+// herdr-automations executable embeds that string too.
+func isShim(raw []byte) bool {
+	return bytes.HasPrefix(raw, []byte("#!")) && bytes.Contains(raw, []byte(marker))
+}
+
 // ErrNotOurs: something other than our shim already sits at the target path.
 var ErrNotOurs = errors.New("not a herdr-automations shim")
 
@@ -53,7 +59,7 @@ func Find() (string, bool) {
 		return "", false
 	}
 	raw, err := os.ReadFile(path)
-	if err != nil || !bytes.Contains(raw, []byte(marker)) {
+	if err != nil || !isShim(raw) {
 		return "", false
 	}
 	return path, true
@@ -76,7 +82,7 @@ func Install(dir string) error {
 	case err == nil && string(existing) == script:
 		fmt.Printf("Already installed: %s\n", path)
 		return nil
-	case err == nil && !bytes.Contains(existing, []byte(marker)):
+	case err == nil && !isShim(existing):
 		return fmt.Errorf("%s: %w; remove it or pick another directory", path, ErrNotOurs)
 	case err != nil && !errors.Is(err, os.ErrNotExist):
 		return err
