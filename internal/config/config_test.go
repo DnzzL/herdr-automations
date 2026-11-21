@@ -478,3 +478,27 @@ func TestSessionIsRefusedUnderHC(t *testing.T) {
 		t.Fatalf("got %+v", cfg.Invalid)
 	}
 }
+
+func TestLoadGateIsAnArgvListAndMayNotBeEmpty(t *testing.T) {
+	entry := func(gate string) string {
+		return "automations:\n  - name: triage\n    cron: \"@daily\"\n    repo: /x\n    prompt: p\n" + gate
+	}
+	withConfig(t, entry("    gate: [\"sh\", \"-c\", \"exit 0\"]\n"))
+	cfg, err := Load()
+	if err != nil || len(cfg.Invalid) != 0 {
+		t.Fatalf("valid gate refused: %v %v", err, cfg.Invalid)
+	}
+	if got := cfg.Automations[0].Gate; len(got) != 3 || got[0] != "sh" {
+		t.Fatalf("gate = %q", got)
+	}
+	for _, bad := range []string{"    gate: []\n", "    gate: [\"\"]\n"} {
+		withConfig(t, entry(bad))
+		cfg, err := Load()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(cfg.Invalid) != 1 || !strings.Contains(cfg.Invalid[0].Message, "gate") {
+			t.Errorf("%q: want a gate diagnostic, got %+v", bad, cfg.Invalid)
+		}
+	}
+}

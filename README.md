@@ -266,12 +266,22 @@ automations:
     timeout_minutes: 60           # optional bound on the run
     catch_up_minutes: 120         # how late a sleep-delayed run may still start; -1 never
     close_workspace: on-success   # optional: close a done run's workspace; never (default)
+    gate: ["gh", "pr", "list"]    # optional precheck, argv, no shell; see below
     disabled: true                # optional: keep it, don't schedule it
 ```
 
 For Copilot, `mcp_config` becomes `--additional-mcp-config @<path>`; the `@`
 tells Copilot to read the file rather than parse its path as inline JSON.
 Other agents still receive `--mcp-config <path>`.
+
+**Gate.** `gate:` is a command, as an argv list (no shell; write
+`["sh", "-c", "…"]` if you want one), run in `repo` before the run starts and before
+any workspace or worktree exists. Exit `0` runs the automation. Exit `75`
+(`EX_TEMPFAIL`) skips it: the history says `skipped: gate: nothing to do (exit 75)`, and nothing
+is provisioned or toasted. Any other exit, a start failure, or more than 60 s
+(not configurable) fails the run, toasted with the end of the gate's stderr. The gate's
+output is not passed to the prompt. It applies to scheduled runs and to `run` alike
+([ADR 0014](docs/adr/0014-a-gate-can-skip-a-run.md)).
 
 ### Run in a shared workspace
 
