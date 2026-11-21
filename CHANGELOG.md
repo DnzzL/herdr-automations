@@ -8,6 +8,14 @@ What changed for someone using the plugin. Dates are release dates.
 
 - `gate:` runs a command in the repo before a run starts. Exit 75 skips the run
   (recorded `skipped`, no workspace, no toast); any other failure fails it (#24).
+- Windows support, as the desktop app's backend: one PowerShell command
+  installs or updates it, `service install` starts the scheduler at login, and
+  the panel works as on macOS and Linux. Runs always go through hc there; a
+  `backend: herdr` line is reported. Community-supported: built and tested in CI,
+  never by hand. Thanks @HatlerRyan for asking and for the prototype (#21).
+- The panel saves automations through the new `put --entry`, without `sh`. On
+  Windows, a prompt too long for the command line fails with a message instead
+  of being cut.
 
 ### Fixed
 

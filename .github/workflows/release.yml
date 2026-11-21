@@ -20,11 +20,13 @@ jobs:
         run: |
           version="${GITHUB_REF_NAME#v}"
           mkdir -p dist
-          for target in darwin/arm64 darwin/amd64 linux/amd64 linux/arm64; do
+          # No windows/arm64: the Herdr app is x86_64 only there (ADR 0013).
+          for target in darwin/arm64 darwin/amd64 linux/amd64 linux/arm64 windows/amd64; do
             os="${target%/*}"; arch="${target#*/}"
+            ext=""; [ "$os" = windows ] && ext=".exe"
             GOOS="$os" GOARCH="$arch" CGO_ENABLED=0 \
               go build -trimpath -ldflags "-s -w -X main.Version=${version}" \
-              -o "dist/herdr-automations_${os}_${arch}" .
+              -o "dist/herdr-automations_${os}_${arch}${ext}" .
           done
           cd dist && sha256sum herdr-automations_* > checksums.txt
 

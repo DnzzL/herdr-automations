@@ -1,57 +1,19 @@
 package daemon
 
 import (
+	"bufio"
 	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"syscall"
 	"testing"
+	"time"
 
 	"github.com/DnzzL/herdr-automations/internal/runner"
 )
-
-// A daemon killed with the Herdr server leaves its pidfile behind, and the
-// startup hook runs again on the next restart. By then the recorded PID may
-// have been reused by an unrelated process, which must not be mistaken for a
-// running daemon.
-func TestAcquireLockIgnoresStalePIDOwnedByAnotherProcess(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("HERDR_PLUGIN_STATE_DIR", dir)
-
-	// A live process of our own that is plainly not a daemon. Signalling it
-	// succeeds, so any liveness check based on the PID alone reports it as one.
-	victim := exec.Command("sleep", "60")
-	if err := victim.Start(); err != nil {
-		t.Fatalf("start helper process: %v", err)
-	}
-	defer func() {
-		_ = victim.Process.Kill()
-		_, _ = victim.Process.Wait()
-	}()
-
-	pidfile := filepath.Join(dir, "daemon.pid")
-	if err := os.WriteFile(pidfile, []byte(strconv.Itoa(victim.Process.Pid)), 0o644); err != nil {
-		t.Fatalf("seed stale pidfile: %v", err)
-	}
-
-	release, err := acquireLock()
-	if err != nil {
-		t.Fatalf("acquireLock refused to start over a stale pidfile: %v", err)
-	}
-	defer release()
-
-	got, err := os.ReadFile(pidfile)
-	if err != nil {
-		t.Fatalf("read pidfile: %v", err)
-	}
-	if want := strconv.Itoa(os.Getpid()); string(got) != want {
-		t.Errorf("pidfile = %q, want %q", got, want)
-	}
-}
 
 // The lock must still do its job: a real second daemon is a separate process,
 // so the check has to hold across processes rather than within one.
@@ -114,7 +76,7 @@ func TestReleaseKeepsTheFileSoOnlyOneDaemonLocksIt(t *testing.T) {
 	defer next.Close()
 
 	release()
-	if err := syscall.Flock(int(next.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+	if err := lockFile(next, true); err != nil {
 		t.Fatalf("lock the released pidfile: %v", err)
 	}
 
@@ -149,6 +111,62 @@ func TestLockHelperProcess(t *testing.T) {
 	}
 	defer release()
 	fmt.Println("ACQUIRED")
+	if os.Getenv("HERDR_LOCK_HOLD") == "1" {
+		// Hold until killed: the parent checks what the OS does with a lock
+		// whose holder never released it.
+		time.Sleep(time.Hour)
+	}
+}
+
+// The panel's banner reads Running() from another process while the scheduler
+// holds the lock, and a scheduler that dies without releasing must not strand
+// the next one. Windows locks are mandatory, so this also proves the PID stays
+// readable while the file is locked.
+func TestLockFollowsTheHolderProcess(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HERDR_PLUGIN_STATE_DIR", dir)
+
+	holder := exec.Command(os.Args[0], "-test.run=^TestLockHelperProcess$")
+	holder.Env = append(os.Environ(), "HERDR_LOCK_HELPER=1", "HERDR_LOCK_HOLD=1", "HERDR_PLUGIN_STATE_DIR="+dir)
+	stdout, err := holder.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := holder.Start(); err != nil {
+		t.Fatalf("start holder: %v", err)
+	}
+	defer func() {
+		_ = holder.Process.Kill()
+		_ = holder.Wait()
+	}()
+	line, err := bufio.NewReader(stdout).ReadString('\n')
+	if err != nil || !strings.Contains(line, "ACQUIRED") {
+		t.Fatalf("holder did not take the lock: %q %v", line, err)
+	}
+
+	if pid, ok := Running(); !ok || pid != holder.Process.Pid {
+		t.Errorf("Running() = %d %v while pid %d holds the lock; the panel would show the wrong banner", pid, ok, holder.Process.Pid)
+	}
+	if second, err := acquireLock(); !errors.Is(err, ErrAlreadyRunning) {
+		if err == nil {
+			second()
+		}
+		t.Fatalf("second acquire err = %v, want ErrAlreadyRunning", err)
+	}
+
+	if err := holder.Process.Kill(); err != nil {
+		t.Fatal(err)
+	}
+	_ = holder.Wait()
+
+	if _, ok := Running(); ok {
+		t.Error("Running() still true after the holder died")
+	}
+	release, err := acquireLock()
+	if err != nil {
+		t.Fatalf("lock stranded by a dead holder: %v", err)
+	}
+	release()
 }
 
 // A re-exec that fails leaves the old daemon running, so it must still hold

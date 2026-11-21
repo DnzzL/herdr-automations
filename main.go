@@ -6,17 +6,17 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/DnzzL/herdr-automations/internal/api"
 	"github.com/DnzzL/herdr-automations/internal/cleanup"
 	"github.com/DnzzL/herdr-automations/internal/config"
 	"github.com/DnzzL/herdr-automations/internal/daemon"
+	"github.com/DnzzL/herdr-automations/internal/detach"
 	"github.com/DnzzL/herdr-automations/internal/herdr"
 	"github.com/DnzzL/herdr-automations/internal/history"
 	"github.com/DnzzL/herdr-automations/internal/pane"
@@ -36,7 +36,7 @@ Usage:
   herdr-automations daemon [--standby]
                                      Run the scheduler (--standby: wait while another one runs)
   herdr-automations service install|uninstall|status
-                                     Run the scheduler as a login service (launchd, systemd)
+                                     Run the scheduler as a login service (launchd, systemd, Windows Run key)
   herdr-automations add              Interactive wizard: create an automation
   herdr-automations list [--json]    List automations with schedule and last run
   herdr-automations run <name> [--bg]
@@ -47,7 +47,7 @@ Usage:
                                      Resume what pause stopped
   herdr-automations history [name] [--json]
                                      Show recent runs
-  herdr-automations put [--original <name>] [--dry-run] < automation.json
+  herdr-automations put [--original <name>] [--dry-run] [--entry <json> | < automation.json]
                                      Write one automation; keys not sent are kept (the app panel's form)
   herdr-automations rm <name>        Delete one automation
   herdr-automations seen <run-id|--all>
@@ -70,6 +70,11 @@ func main() {
 	args, asJSON := withoutFlag(os.Args[2:], "--json")
 	switch os.Args[1] {
 	case "daemon":
+		args, fromLogin := withoutFlag(args, service.FromLogin)
+		if fromLogin {
+			err = relaunchDetached()
+			break
+		}
 		_, standby := withoutFlag(args, "--standby")
 		err = daemon.Run(standby)
 		if errors.Is(err, daemon.ErrAlreadyRunning) {
@@ -362,18 +367,31 @@ func pauseCmd(args []string, disabled bool) error {
 	return nil
 }
 
-// putCmd writes one automation read as JSON on stdin and prints what Put
-// found. A refused entry is an answer, not an error: the form shows Problem.
+// putCmd writes one automation read as JSON from --entry, else stdin, and
+// prints what Put found. A refused entry is an answer, not an error: the form
+// shows Problem. --entry exists because the app's exec has no stdin; the panel
+// checks Windows' command-line cap itself, since an entry over it never
+// reaches this process.
 func putCmd(args []string) error {
 	args, dryRun := withoutFlag(args, "--dry-run")
-	original := ""
-	if len(args) == 2 && args[0] == "--original" {
-		original = args[1]
-	} else if len(args) != 0 {
-		return fmt.Errorf("usage: herdr-automations put [--original <name>] [--dry-run] < automation.json")
+	original, entry, fromArg := "", "", false
+	for len(args) >= 2 && (args[0] == "--original" || args[0] == "--entry") {
+		if args[0] == "--original" {
+			original = args[1]
+		} else {
+			entry, fromArg = args[1], true
+		}
+		args = args[2:]
+	}
+	if len(args) != 0 {
+		return fmt.Errorf("usage: herdr-automations put [--original <name>] [--dry-run] [--entry <json> | < automation.json]")
+	}
+	var src io.Reader = os.Stdin
+	if fromArg {
+		src = strings.NewReader(entry)
 	}
 	var raw json.RawMessage
-	if err := json.NewDecoder(os.Stdin).Decode(&raw); err != nil {
+	if err := json.NewDecoder(src).Decode(&raw); err != nil {
 		return fmt.Errorf("read automation JSON: %w", err)
 	}
 	var in api.Automation
@@ -398,7 +416,7 @@ func putCmd(args []string) error {
 	return printJSON(config.Put(original, a, given, dryRun))
 }
 
-// runDetached starts `run <name>` in its own session and returns at once. The
+// runDetached starts `run <name>` detached and returns at once. The
 // panel cannot wait an hour on exec, and the run must outlive the app.
 func runDetached(args []string) error {
 	if len(args) != 1 {
@@ -408,18 +426,17 @@ func runDetached(args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(config.StateDir(), 0o755); err != nil {
-		return err
-	}
-	logf, err := os.OpenFile(filepath.Join(config.StateDir(), "manual-runs.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	return detach.Start(filepath.Join(config.StateDir(), "manual-runs.log"), exe, []string{"run", args[0]}, nil)
+}
+
+// relaunchDetached is what the Windows login entry runs: the scheduler again,
+// detached, so the console window Windows opened for it closes.
+func relaunchDetached() error {
+	exe, err := os.Executable()
 	if err != nil {
 		return err
 	}
-	defer logf.Close()
-	cmd := exec.Command(exe, "run", args[0])
-	cmd.Stdout, cmd.Stderr = logf, logf
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
-	return cmd.Start()
+	return daemon.StartStandby(exe)
 }
 
 func withoutFlag(args []string, flag string) ([]string, bool) {

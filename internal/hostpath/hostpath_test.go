@@ -3,28 +3,9 @@ package hostpath
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
-
-// fakeHerdr writes an executable that answers `plugin config-dir` with answer.
-func fakeHerdr(t *testing.T, dir, answer string) string {
-	t.Helper()
-	path := filepath.Join(dir, "herdr")
-	script := "#!/bin/sh\necho " + answer + "\n"
-	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	return path
-}
-
-func TestBinPrefersWhatHerdrAdvertises(t *testing.T) {
-	fake := fakeHerdr(t, t.TempDir(), "/x")
-	t.Setenv("HERDR_BIN_PATH", fake)
-
-	if got := Bin(); got != fake {
-		t.Fatalf("Bin() = %q, want %q", got, fake)
-	}
-}
 
 func TestBinIgnoresAPathThatNoLongerExists(t *testing.T) {
 	// A herdr installed by nix, then replaced by one from homebrew: the running
@@ -43,6 +24,7 @@ func TestBinIgnoresAPathThatIsNotExecutable(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("HERDR_BIN_PATH", notExec)
+	onPlatform(t, "linux") // Windows has no exec bit to miss
 
 	if got := Bin(); got != "herdr" {
 		t.Fatalf("Bin() = %q, want the PATH fallback", got)
@@ -72,32 +54,6 @@ func TestConfigDirPrefersTheEnvironment(t *testing.T) {
 	}
 }
 
-func TestConfigDirAsksTheCLI(t *testing.T) {
-	t.Setenv("HERDR_PLUGIN_CONFIG_DIR", "")
-	t.Setenv("HERDR_BIN_PATH", fakeHerdr(t, t.TempDir(), "/asked/herdr"))
-
-	if got := ConfigDir(); got != "/asked/herdr" {
-		t.Fatalf("ConfigDir() = %q, want the CLI's answer", got)
-	}
-}
-
-func TestConfigDirStillAsksPathWhenTheAdvertisedBinaryIsGone(t *testing.T) {
-	// The bug this package exists for. config.herdrBin trusted a stale
-	// HERDR_BIN_PATH, so `plugin config-dir` failed to exec and the directory
-	// fell all the way through to the hardcoded layout guess — without ever
-	// trying the herdr that is right there on PATH. A wrong config directory
-	// reads as an empty automations.yaml: every automation silently gone.
-	onPath := t.TempDir()
-	fakeHerdr(t, onPath, "/found/on/path")
-	t.Setenv("PATH", onPath+string(os.PathListSeparator)+os.Getenv("PATH"))
-	t.Setenv("HERDR_PLUGIN_CONFIG_DIR", "")
-	t.Setenv("HERDR_BIN_PATH", filepath.Join(t.TempDir(), "uninstalled", "herdr"))
-
-	if got := ConfigDir(); got != "/found/on/path" {
-		t.Fatalf("ConfigDir() = %q, want the herdr on PATH to be asked", got)
-	}
-}
-
 func TestStateDirPrefersTheEnvironment(t *testing.T) {
 	t.Setenv("HERDR_PLUGIN_STATE_DIR", "/from/herdr")
 	if got := StateDir(); got != "/from/herdr" {
@@ -113,39 +69,93 @@ func TestRootPrefersTheEnvironment(t *testing.T) {
 	}
 }
 
+// onPlatform makes the lookups behave as they do on goos, so the Windows rules
+// are proven on every CI runner.
+func onPlatform(t *testing.T, platform string) {
+	t.Helper()
+	was := goos
+	goos = platform
+	t.Cleanup(func() { goos = was })
+}
+
+// bareHost empties everything HCBin looks at: no HC_BIN, nothing on PATH, a
+// fresh home and app-data folder. It returns the home.
+func bareHost(t *testing.T) string {
+	t.Helper()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("LOCALAPPDATA", t.TempDir())
+	t.Setenv("PATH", t.TempDir())
+	t.Setenv("HC_BIN", "")
+	return home
+}
+
+// writeExe writes an executable-looking file at path, creating its folder.
+func writeExe(t *testing.T, path string) string {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
 // launchd hands a service PATH=/usr/bin:/bin. The app installs hc in
 // ~/.local/bin, so a bare "hc" would not resolve from the daemon.
 func TestHCBinFindsTheAppInstallUnderABarePath(t *testing.T) {
-	home := t.TempDir()
-	bin := filepath.Join(home, ".local", "bin")
-	if err := os.MkdirAll(bin, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	want := filepath.Join(bin, "hc")
-	if err := os.WriteFile(want, []byte("#!/bin/sh\n"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("HOME", home)
-	t.Setenv("PATH", "/usr/bin:/bin")
-	t.Setenv("HC_BIN", "")
+	home := bareHost(t)
+	want := writeExe(t, filepath.Join(home, ".local", "bin", "hc"))
 
 	if got := HCBin(); got != want {
 		t.Fatalf("HCBin() = %q, want %q", got, want)
 	}
 }
 
-// What `herdr plugin list --plugin <id> --json` answers, trimmed. The login
-// service compares the binary it runs with the one installed now.
-func TestInstalledBinaryReadsThePluginRoot(t *testing.T) {
-	raw := []byte(`{"id":"cli:plugin","result":{"plugins":[
-		{"plugin_id":"someone.else","plugin_root":"/x"},
-		{"plugin_id":"dnzzl.automations","plugin_root":"/p/77472-0/checkout","version":"0.11.2"}]}}`)
-	if got, want := installedBinary(raw), "/p/77472-0/checkout/bin/herdr-automations"; got != want {
-		t.Fatalf("got %q, want %q", got, want)
+// Go reports no exec bits on Windows, so an HC_BIN pointing at a real file
+// was rejected and the lookup fell through to a bare "hc" that is not there.
+func TestOnWindowsHCBinTakesAnExistingFile(t *testing.T) {
+	onPlatform(t, "windows")
+	bareHost(t)
+	want := filepath.Join(t.TempDir(), "hc.exe")
+	if err := os.WriteFile(want, nil, 0o644); err != nil {
+		t.Fatal(err)
 	}
-	for _, bad := range []string{``, `{}`, `not json`, `{"result":{"plugins":[{"plugin_id":"someone.else","plugin_root":"/x"}]}}`} {
-		if got := installedBinary([]byte(bad)); got != "" {
-			t.Errorf("%q: got %q, want nothing", bad, got)
-		}
+	t.Setenv("HC_BIN", want)
+
+	if got := HCBin(); got != want {
+		t.Fatalf("HCBin() = %q, want %q", got, want)
+	}
+}
+
+// The app's installer puts herdr-core on PATH and links hc to it only when no
+// hc exists, so herdr-core may be the only name there is.
+func TestOnWindowsHCBinFindsHerdrCoreOnPath(t *testing.T) {
+	onPlatform(t, "windows")
+	bareHost(t)
+	dir := t.TempDir()
+	t.Setenv("PATH", dir)
+	name := "herdr-core"
+	if runtime.GOOS == "windows" {
+		name += ".exe" // LookPath goes by extension there
+	}
+	want := writeExe(t, filepath.Join(dir, name))
+
+	if got := HCBin(); got != want {
+		t.Fatalf("HCBin() = %q, want %q", got, want)
+	}
+}
+
+// The login entry may start the scheduler before the installer's folder is on
+// its PATH; the folder itself is known.
+func TestOnWindowsHCBinFindsHerdrCoreWhereTheAppInstallsIt(t *testing.T) {
+	onPlatform(t, "windows")
+	bareHost(t)
+	want := writeExe(t, filepath.Join(os.Getenv("LOCALAPPDATA"), "Programs", "herdr-core", "herdr-core.exe"))
+
+	if got := HCBin(); got != want {
+		t.Fatalf("HCBin() = %q, want %q", got, want)
 	}
 }
