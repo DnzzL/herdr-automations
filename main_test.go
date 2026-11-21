@@ -18,7 +18,11 @@ func TestMain(m *testing.M) {
 	if os.Getenv("HERDR_AUTOMATIONS_TEST_CLI") != "" {
 		if marker := os.Getenv("HERDR_TEST_SLOW_RUN"); marker != "" && len(os.Args) == 3 && os.Args[1] == "run" {
 			time.Sleep(2 * time.Second)
-			_ = os.WriteFile(marker, []byte(os.Args[2]), 0o644)
+			// Write-then-rename: the marker never exists half-written.
+			tmp := marker + ".tmp"
+			if err := os.WriteFile(tmp, []byte(os.Args[2]), 0o644); err == nil {
+				_ = os.Rename(tmp, marker)
+			}
 			os.Exit(0)
 		}
 		main()
